@@ -10,8 +10,10 @@
 | 状態 | 内容 |
 | --- | --- |
 | **Phase1 拾い出しMVP** | 設備図PDF → 抽出 → 系統別分類 → 拾い出し Excel。**mock で一気通貫が稼働**（API・実PDF不要） |
-| 単価マスタ | `prompts/unit_prices.yaml`（系統別カテゴリ単価＋代表器具）。見積ドラフト連携用 |
-| 今後 | 実設備図での精度検証 → 見積書/材料発注書（F-12）→ 攻めエンジン（F-15〜17） |
+| 単価マスタ | `prompts/unit_prices.yaml`（系統別カテゴリ単価＋代表器具） |
+| **F-12 見積（稼働）** | 拾い出し→単価適用→**見積書.xlsx・材料発注書.xlsx**（材工分離・諸経費・消費税） |
+| **F-16 申請（稼働）** | 拾い出し→**給水装置工事申込書ドラフト.md**（給水/給湯の口径別延長・器具数を自動集計） |
+| 今後 | 実設備図での精度検証（`PROVIDER=claude`）→ 攻めエンジン F-15/F-17・自治体様式の拡充 |
 
 ## セットアップ
 
@@ -32,6 +34,14 @@ make run-takeoff
 
 # 本番（Claude）。設備図 PDF を渡す
 make run-takeoff PROVIDER=claude INPUT=samples/あなたの設備図.pdf
+
+# F-12 見積（拾い出し→見積書＋材料発注書）
+make run-estimate
+#   → out/見積書.xlsx, out/材料発注書.xlsx
+
+# F-16 申請ドラフト（給水装置工事申込書）。物件情報は samples/project_info.yaml
+make run-application
+#   → out/給水装置工事申込書_ドラフト.md
 ```
 
 LLM プロバイダは `GOPIPE_LLM_PROVIDER`（`claude` | `openai` | `mock`）で切替。
