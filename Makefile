@@ -4,7 +4,7 @@ OUT ?= out/
 SYMPTOM ?= トイレが流れない 水位が上がる
 YEAR ?= 2008
 
-.PHONY: setup run-takeoff run-estimate run-application run-emergency run-maintenance test lint
+.PHONY: setup run-takeoff run-estimate run-application run-emergency run-maintenance web test lint
 
 setup:
 	python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
@@ -30,6 +30,10 @@ run-emergency:
 # 予防保全（F-17）: 拾い出し → 配管台帳 → 更新予測 → プラン提案。例: make run-maintenance YEAR=2008
 run-maintenance:
 	GOPIPE_LLM_PROVIDER=$(PROVIDER) python scripts/run_maintenance.py --input "$(INPUT)" --out "$(OUT)" --installed-year $(YEAR)
+
+# Web UI（Streamlit）。ブラウザで全機能を実行。要: pip install -e ".[web]"
+web:
+	GOPIPE_LLM_PROVIDER=$(PROVIDER) streamlit run webui/app.py
 
 test:
 	pytest

@@ -27,7 +27,16 @@ python3.11 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
 ```
 
-## 使い方
+## Web UI（ブラウザで全機能）★おすすめ
+
+```bash
+.venv/bin/python -m pip install -e ".[web]"   # 初回のみ（streamlit/pandas）
+make web                                        # → http://localhost:8501
+```
+
+設備図をアップロード（**mock ならPDF不要**）→「拾い出し実行」→ 拾い出し／見積／申請／予防保全／透明見積を**タブで実行・ダウンロード**。本体は `webui/app.py`。
+
+## CLI での使い方
 
 ```bash
 # mock で一気通貫（API キー・実 PDF 不要。配管サンプルを返す疎通確認）

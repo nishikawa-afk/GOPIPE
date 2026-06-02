@@ -1,0 +1,238 @@
+"""GOPIPE Web UI（Streamlit）。
+
+設備図PDF（または mock サンプル）から拾い出し → 見積(F-12) / 申請(F-16) /
+予防保全(F-17) / 透明見積(F-15) をブラウザで実行・ダウンロードする。
+
+起動:
+    .venv/bin/streamlit run webui/app.py
+    （mock なら PDF 不要でサンプルが動く。本番は LLMプロバイダ=claude＋設備図PDF）
+"""
+from __future__ import annotations
+
+import datetime
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+# 既存パッケージ（src / shared）を import 可能にする
+ROOT = Path(__file__).resolve().parents[1]
+for _p in (ROOT / "src", ROOT / "shared"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+OUT_DIR = ROOT / "out"
+
+st.set_page_config(page_title="GOPIPE", page_icon="🔧", layout="wide")
+
+
+def _run_takeoff(pdf_path: Path, provider: str):
+    os.environ["GOPIPE_LLM_PROVIDER"] = provider
+    from gopipe_takeoff import run_takeoff
+
+    return run_takeoff(str(pdf_path), str(OUT_DIR))
+
+
+# ----------------------------- サイドバー -----------------------------
+st.sidebar.title("🔧 GOPIPE")
+st.sidebar.caption("配管・設備工事 AI ― 拾い出しから見積・申請・保全まで")
+provider = st.sidebar.selectbox(
+    "LLMプロバイダ",
+    ["mock", "claude", "openai"],
+    index=0,
+    help="mock=APIキー不要のサンプル。claude=実図面の本番抽出（要 ANTHROPIC_API_KEY）",
+)
+uploaded = st.sidebar.file_uploader("設備図PDF", type=["pdf"])
+run = st.sidebar.button("▶ 拾い出し実行", type="primary", use_container_width=True)
+st.sidebar.markdown("---")
+st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫で動きます。")
+
+st.title("GOPIPE — 設備拾い出しから見積・申請・保全まで")
+
+# ----------------------------- 実行 -----------------------------
+if run:
+    if uploaded is not None:
+        tmp = Path(tempfile.gettempdir()) / uploaded.name
+        tmp.write_bytes(uploaded.getvalue())
+        pdf_path = tmp
+    else:
+        pdf_path = ROOT / "samples" / "dummy_設備図.pdf"
+        if provider != "mock":
+            st.warning("PDF が未選択です。mock 以外は設備図PDFをアップロードしてください。")
+    with st.spinner("拾い出し中…"):
+        try:
+            result = _run_takeoff(pdf_path, provider)
+            st.session_state["items"] = [it.model_dump() for it in result.items]
+        except Exception as e:  # noqa: BLE001
+            st.error(f"拾い出しでエラー: {e}")
+
+# session_state から復元
+items = None
+if "items" in st.session_state:
+    from gopipe_takeoff.models import TakeoffItem
+
+    items = [TakeoffItem(**d) for d in st.session_state["items"]]
+
+if not items:
+    st.info("← サイドバーで LLMプロバイダを選び「拾い出し実行」を押してください"
+            "（mock なら PDF 不要でサンプルが動きます）。")
+    st.stop()
+
+st.success(f"{len(items)} 件を抽出・系統別に分類しました。")
+
+tab_take, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
+    ["📋 拾い出し", "💰 見積 (F-12)", "📄 申請 (F-16)", "🛡 予防保全 (F-17)", "🚿 透明見積 (F-15)"]
+)
+
+# ----------------------------- 拾い出し -----------------------------
+with tab_take:
+    df = pd.DataFrame(
+        [
+            {
+                "カテゴリ": it.category, "名称": it.name, "仕様": it.spec,
+                "場所": it.location, "数量": it.quantity, "単位": it.unit,
+                "信頼度": round(it.confidence, 2),
+            }
+            for it in items
+        ]
+    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+# ----------------------------- 見積 (F-12) -----------------------------
+with tab_est:
+    from gopipe_takeoff.estimate import (
+        build_estimate,
+        write_estimate_excel,
+        write_purchase_order_excel,
+    )
+    from gopipe_takeoff.pricer import Pricer
+
+    overhead = st.slider("諸経費率", 0.0, 0.30, 0.10, 0.01)
+    pricer = Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml")
+    est = build_estimate(items, pricer, overhead_rate=overhead)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("小計", f"¥{est.subtotal:,}")
+    c2.metric("諸経費＋消費税", f"¥{est.overhead + est.tax:,}")
+    c3.metric("合計（税込）", f"¥{est.total:,}")
+
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "カテゴリ": ln.item.category, "名称": ln.item.name, "仕様": ln.item.spec,
+                    "数量": ln.item.quantity, "単位": ln.item.unit,
+                    "単価": ln.unit_price, "金額": ln.amount,
+                    "材料費": ln.material, "労務費": ln.labor,
+                }
+                for ln in est.lines
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    ep = write_estimate_excel(est, OUT_DIR / "見積書.xlsx")
+    pp = write_purchase_order_excel(est, OUT_DIR / "材料発注書.xlsx")
+    d1, d2 = st.columns(2)
+    d1.download_button("⬇ 見積書.xlsx", ep.read_bytes(), "見積書.xlsx", use_container_width=True)
+    d2.download_button("⬇ 材料発注書.xlsx", pp.read_bytes(), "材料発注書.xlsx", use_container_width=True)
+
+# ----------------------------- 申請 (F-16) -----------------------------
+with tab_app:
+    from gopipe_takeoff.application import (
+        ProjectInfo,
+        _load_municipalities,
+        build_application_markdown,
+    )
+
+    data = _load_municipalities()
+    names = [m.get("name", "") for m in data.get("municipalities", [])]
+    muni = st.selectbox("提出先自治体", names + ["（その他／汎用）"])
+    c1, c2 = st.columns(2)
+    contractor = c1.text_input("指定給水装置工事事業者名", "")
+    number = c2.text_input("指定番号", "")
+    chief = c1.text_input("主任技術者", "")
+    owner = c2.text_input("施主・使用者", "")
+    addr = st.text_input("工事場所（住所）", "")
+    work_type = st.selectbox("工事種別", ["新設", "改造", "撤去", "修繕"], index=1)
+
+    proj = ProjectInfo(
+        municipality="" if muni == "（その他／汎用）" else muni,
+        contractor_name=contractor, contractor_number=number,
+        chief_engineer=chief, owner=owner, address=addr, work_type=work_type,
+    )
+    md = build_application_markdown(items, proj)
+    st.markdown(md)
+    st.download_button(
+        "⬇ 給水装置工事申込書_ドラフト.md", md.encode("utf-8"),
+        "給水装置工事申込書_ドラフト.md", use_container_width=True,
+    )
+
+# ----------------------------- 予防保全 (F-17) -----------------------------
+with tab_maint:
+    from gopipe_takeoff.maintenance import (
+        build_ledger,
+        build_maintenance_proposal,
+        load_service_life,
+        recommend_plan,
+    )
+
+    c1, c2 = st.columns(2)
+    installed = c1.number_input("布設年（西暦）", 1970, 2030, 2008)
+    current = c2.number_input("評価年（西暦）", 2000, 2100, datetime.date.today().year)
+    table, plans = load_service_life()
+    ledger = build_ledger(items, int(installed), table)
+    plan = recommend_plan(ledger, plans, current_year=int(current))
+    n_due = sum(1 for r in ledger if r.remaining(int(current)) <= 0)
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("台帳件数", len(ledger))
+    m2.metric("更新時期超過", n_due)
+    m3.metric("推奨プラン", plan.name if plan else "—")
+    if plan:
+        st.info(f"**{plan.name}** ／ 月額 ¥{plan.monthly_fee:,}（{plan.interval_months}ヶ月ごと）— {plan.scope}")
+
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "名称": r.item.name, "管種": r.label, "仕様": r.item.spec,
+                    "布設年": r.installed_year, "耐用年数": r.service_life,
+                    "更新推奨年": r.recommend_year, "残存年": r.remaining(int(current)),
+                }
+                for r in sorted(ledger, key=lambda r: r.remaining(int(current)))
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    md = build_maintenance_proposal(
+        ledger, plan, plans, installed_year=int(installed), current_year=int(current)
+    )
+    st.download_button(
+        "⬇ 予防保全プラン提案.md", md.encode("utf-8"),
+        "予防保全プラン提案.md", use_container_width=True,
+    )
+
+# ----------------------------- 透明見積 (F-15) -----------------------------
+with tab_emg:
+    from gopipe_takeoff.emergency import Catalog, build_quote_card, diagnose
+
+    st.caption("症状から標準作業と明朗料金レンジを提示します（拾い出しとは独立して使えます）。")
+    symptom = st.text_input("症状", "トイレが流れない 水位が上がる")
+    catalog = Catalog.from_yaml()
+    cands = diagnose(symptom, catalog)
+    for c in cands:
+        lo, hi = c.job.price_range_incl_tax()
+        warranty = f"保証{c.job.warranty_months}ヶ月" if c.job.warranty_months else "保証—"
+        st.write(f"**{c.job.name}** … ¥{lo:,} 〜 ¥{hi:,}（{warranty}）")
+    card = build_quote_card(symptom, cands)
+    with st.expander("透明見積カード（Markdown）を表示"):
+        st.markdown(card)
+    st.download_button(
+        "⬇ 透明見積カード.md", card.encode("utf-8"),
+        "透明見積カード.md", use_container_width=True,
+    )
