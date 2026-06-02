@@ -21,6 +21,28 @@ from .models import TakeoffItem
 WATER_SUPPLY_CATEGORIES = ("給水", "給湯")
 DRAINAGE_CATEGORIES = ("排水", "通気")
 
+# 自治体別 様式テンプレ（prompts/municipalities.yaml）
+_MUNI_PATH = Path(__file__).resolve().parents[2] / "prompts" / "municipalities.yaml"
+
+
+def _load_municipalities() -> dict:
+    if not _MUNI_PATH.exists():
+        return {"municipalities": [], "default": {}}
+    with open(_MUNI_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def resolve_municipality(name: str, data: dict | None = None) -> dict:
+    """自治体名（表記ゆれ・別名含む）から様式テンプレを引く。無ければ default。"""
+    data = data if data is not None else _load_municipalities()
+    target = (name or "").strip()
+    if target:
+        for m in data.get("municipalities", []) or []:
+            names = [m.get("name", "")] + list(m.get("aliases", []) or [])
+            if any(n and (target == n or target in n or n in target) for n in names):
+                return m
+    return data.get("default", {}) or {}
+
 
 @dataclass
 class ProjectInfo:
@@ -107,17 +129,27 @@ def _pipe_table(rows: list[dict]) -> list[str]:
 
 def build_application_markdown(items: list[TakeoffItem], project: ProjectInfo) -> str:
     """給水装置工事申込書ドラフト（Markdown）を組み立てる。"""
+    tmpl = resolve_municipality(project.municipality)
     muni = project.municipality or "（汎用様式）"
+    form_name = tmpl.get("form_name", "給水装置工事申込書")
+    authority = tmpl.get("authority", "（提出先の水道事業者）")
+    submit = tmpl.get("submit", "")
+    documents = list(tmpl.get("documents", []) or [])
+    tmpl_notes = tmpl.get("notes", "")
+
     supply = summarize_pipes(items, WATER_SUPPLY_CATEGORIES)
     drainage = summarize_pipes(items, DRAINAGE_CATEGORIES)
     fixtures = summarize_fixtures(items)
     supply_total = sum(r["length"] for r in supply)
 
     L: list[str] = []
-    L.append("# 給水装置工事申込書（ドラフト）")
+    L.append(f"# {form_name}（ドラフト）")
     L.append("")
-    L.append(f"> **{muni}** 提出様式準拠の自動生成ドラフト。"
+    L.append(f"> **提出先: {authority}**（{muni}）／ 自動生成ドラフト。"
              f"**提出前に給水装置工事主任技術者が内容を確認・押印すること。**")
+    if submit:
+        L.append(">")
+        L.append(f"> 提出方法: {submit}")
     L.append("")
     L.append("## 1. 申請者・指定事業者")
     L.append("")
@@ -153,17 +185,18 @@ def build_application_markdown(items: list[TakeoffItem], project: ProjectInfo) -
     L.append("")
     L.extend(_pipe_table(drainage))
     L.append("")
-    L.append("## 6. 添付・確認チェックリスト")
+    L.append(f"## 6. 提出書類・確認チェックリスト（{muni}）")
     L.append("")
-    for chk in (
-        "給水装置工事図面（平面図・系統図）",
-        "位置図・案内図",
+    checklist = documents + [
         "水道メーター口径の確認",
-        "受水槽の有無・容量（該当時）",
-        "主任技術者による数量・口径の確認",
+        "給水装置工事主任技術者による数量・口径の確認",
         "施主の同意・押印",
-    ):
+    ]
+    for chk in checklist:
         L.append(f"- [ ] {chk}")
+    if tmpl_notes:
+        L.append("")
+        L.append(f"> **{muni} の留意点**: {tmpl_notes}")
     L.append("")
     L.append("---")
     L.append("_本ドラフトは GOPIPE が拾い出しデータから自動生成しました。"

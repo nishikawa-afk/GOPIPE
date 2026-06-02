@@ -74,3 +74,47 @@ def test_application_draft_contains_key_fields(tmp_path):
     assert "東京都水道局" in md
     assert "合計延長" in md
     assert "DN20" in md  # 給水 VLP DN20 が口径集計される
+
+
+def test_municipality_template_switches(tmp_path):
+    """F-16: 自治体エイリアスで提出先・様式が切り替わり、未登録は default。"""
+    from gopipe_takeoff.application import resolve_municipality
+
+    chiba = resolve_municipality("千葉広域水道企業団")
+    assert "千葉県企業局" in chiba.get("authority", "")  # 広域企業団→県営水道へ解決
+
+    ichihara = resolve_municipality("市原市")
+    assert "市原市" in ichihara.get("authority", "")
+
+    unknown = resolve_municipality("どこかの市")
+    assert unknown.get("form_name")  # default が返る（空でない）
+
+
+def test_emergency_quote_card(tmp_path):
+    """F-15: 症状→候補と料金レンジが出て、カードに明朗会計の要素が載る。"""
+    from gopipe_takeoff.emergency import Catalog, build_quote_card, diagnose
+
+    catalog = Catalog.from_yaml()
+    cands = diagnose("トイレが流れない 水位が上がる", catalog)
+    assert len(cands) >= 1
+    assert cands[0].job.price_max > 0
+
+    card = build_quote_card("トイレが流れない", cands)
+    assert "料金めやす" in card
+    assert "作業記録" in card  # 透明性（記録）の担保
+
+
+def test_maintenance_ledger_and_plan(tmp_path):
+    """F-17: 台帳の更新推奨年＝布設年＋耐用年数、プラン推奨が返る。"""
+    from gopipe_takeoff.maintenance import build_ledger, load_service_life, recommend_plan
+
+    result = run_takeoff(str(tmp_path / "dummy.pdf"), str(tmp_path / "out"))
+    table, plans = load_service_life()
+    ledger = build_ledger(result.items, 2008, table)
+    assert len(ledger) >= 1
+
+    row = ledger[0]
+    assert row.recommend_year == 2008 + row.service_life
+
+    plan = recommend_plan(ledger, plans, current_year=2026)
+    assert plan is not None  # 2008布設・2026評価で何らかのプランを推奨

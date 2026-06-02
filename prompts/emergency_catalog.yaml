@@ -1,0 +1,81 @@
+# F-15 透明見積：水まわり緊急修理の標準作業カタログ
+#
+# 症状キーワード → 標準作業・料金めやす（税抜）・保証。
+# diagnose() が symptom テキストと keywords の部分一致でマッチし、ヒット数で順位付け。
+#
+# price_min/max  : 税抜の料金めやす（円）。現場確定が前提のレンジ。
+# warranty_months: 標準保証（月）
+# ※ 価格は初期の仮値。自社の実勢に合わせて更新する。
+
+jobs:
+  - name: 蛇口パッキン交換
+    keywords: [蛇口, カラン, 水漏れ, ぽたぽた, ポタポタ, パッキン, 滴]
+    price_min: 3000
+    price_max: 8000
+    work: 蛇口・水栓のパッキン/カートリッジ交換。止水・分解・部材交換・通水確認。
+    warranty_months: 6
+
+  - name: 単水栓・混合水栓 交換
+    keywords: [水栓交換, 蛇口交換, 混合水栓, シングルレバー, カラン交換]
+    price_min: 15000
+    price_max: 40000
+    work: 既存水栓の撤去と新規水栓の取付・接続・通水確認。本体は別途。
+    warranty_months: 12
+
+  - name: トイレつまり除去（軽度）
+    keywords: [トイレ, つまり, 詰まり, 流れない, 便器, 水位]
+    price_min: 8000
+    price_max: 18000
+    work: ローポンプ/ラバーカップによる軽度の閉塞除去・通水確認。
+    warranty_months: 1
+
+  - name: トイレつまり除去（重度・便器脱着）
+    keywords: [便器脱着, 異物, 固形物, 高圧洗浄, 重度]
+    price_min: 20000
+    price_max: 45000
+    work: 便器脱着または高圧洗浄による重度閉塞の除去・復旧・通水確認。
+    warranty_months: 1
+
+  - name: 排水つまり除去（台所・洗面）
+    keywords: [排水, つまり, 流れ, シンク, 台所, 洗面, 排水溝, 逆流]
+    price_min: 8000
+    price_max: 22000
+    work: トーラー/高圧洗浄による排水管の閉塞除去・通水確認。
+    warranty_months: 1
+
+  - name: トイレ止水不良（タンク内部品交換）
+    keywords: [止まらない, タンク, ちょろちょろ, ボールタップ, フロート, 流れ続ける]
+    price_min: 8000
+    price_max: 20000
+    work: ボールタップ/フロートバルブ等のタンク内部品交換・水位調整。
+    warranty_months: 6
+
+  - name: 給湯器 点検・交換
+    keywords: [給湯器, お湯, 出ない, エラー, 着火, 給湯, ガス給湯]
+    price_min: 80000
+    price_max: 250000
+    work: 給湯器の点検、必要に応じ本体交換・接続・試運転。本体グレードで変動。
+    warranty_months: 24
+
+  - name: ウォシュレット（温水洗浄便座）交換
+    keywords: [ウォシュレット, 温水洗浄便座, シャワートイレ, 便座]
+    price_min: 30000
+    price_max: 70000
+    work: 既存便座の撤去と新規温水洗浄便座の取付・分岐接続・動作確認。本体は別途。
+    warranty_months: 12
+
+  - name: 漏水調査・配管修理
+    keywords: [漏水, 配管, 床下, 壁内, にじみ, 水浸し, 水道メーター回る]
+    price_min: 15000
+    price_max: 50000
+    work: 漏水箇所の調査・特定と配管補修。範囲により別途見積。
+    warranty_months: 6
+
+# どの症状にも当たらない場合のフォールバック
+fallback:
+  name: 現地調査・点検
+  keywords: []
+  price_min: 5000
+  price_max: 15000
+  work: 症状から作業を特定できないため、現地調査のうえ正式見積を提示。
+  warranty_months: 0

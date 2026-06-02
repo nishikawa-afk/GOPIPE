@@ -1,0 +1,47 @@
+# F-17 予防保全：管種別 標準耐用年数（更新推奨年の算定用）。単位=年。
+#
+# name/spec に含まれる管種キーワードで判定。更新推奨年 = 布設年 + years。
+# ※ 実際の更新時期は水質・使用状況・施工状態で変動する標準目安。
+
+pipe_service_life:
+  - keywords: [SGP, 白ガス管, 配管用炭素鋼, 鋼管]
+    years: 20
+    label: 鋼管(SGP)
+  - keywords: [VLP, ライニング鋼管, 塩ビライニング]
+    years: 25
+    label: ライニング鋼管(VLP)
+  - keywords: [HIVP, VP, 塩ビ, 硬質塩化ビニル]
+    years: 25
+    label: 塩ビ管(VP/HIVP)
+  - keywords: [CUP, 銅管, 銅]
+    years: 30
+    label: 銅管(CUP)
+  - keywords: [SUS, ステンレス]
+    years: 40
+    label: ステンレス管(SUS)
+  - keywords: [ポリ, PE, 架橋ポリ, ポリエチレン]
+    years: 30
+    label: ポリエチレン管(PE)
+  - keywords: [冷媒, ペアコイル, 2分3分]
+    years: 15
+    label: 冷媒配管
+  - keywords: [給湯器, ポンプ, 給湯機]
+    years: 12
+    label: 給湯・ポンプ機器
+
+default_years: 20
+
+# 予防保全サブスク（定期点検契約）プラン。interval が短いほど手厚い。
+plans:
+  - name: ライトプラン
+    interval_months: 12
+    monthly_fee: 3000
+    scope: 年1回の目視点検・通水確認・簡易報告
+  - name: スタンダードプラン
+    interval_months: 6
+    monthly_fee: 6000
+    scope: 半年ごとの点検＋漏水チェック＋写真付き報告＋優先対応
+  - name: プレミアムプラン
+    interval_months: 3
+    monthly_fee: 12000
+    scope: 四半期点検＋IoT漏水センサー連携＋緊急優先駆けつけ
