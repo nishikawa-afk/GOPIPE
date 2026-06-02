@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 環境変数・シークレット
+.env
+.env.local
+.secrets.local
+
+# 出力物（拾い出し表・マーカーPDF）
+out/
+*.xlsx
+
+# キャッシュ
+.pytest_cache/
+.ruff_cache/
+
+# OS
+.DS_Store

@@ -1,0 +1,159 @@
+# GOPIPE 配管・設備工事 品目辞書（拾い出し用）
+#
+# canonical: 正規名称（Excel/集計で使う表記）。lookup では完全一致＋3文字以上の部分一致で当たる。
+# category : 系統・工種カテゴリ（給水/給湯/排水/通気/消火/ガス/冷媒/ドレン/
+#            弁類/継手/衛生器具/機器/ダクト/保温/支持金物/はつり・復旧/試験調整/雑材）
+# unit     : 標準単位（配管=m、継手/弁=個、器具/機器=台、ダクト=m2 など）
+# aliases  : canonical 以外の別名のみ（canonical 自身は書かない）。3 文字以上で部分一致する。
+
+entries:
+  # ========================= 配管（系統別） =========================
+  - canonical: 給水管
+    category: 給水
+    unit: m
+    aliases: [水道用ライニング鋼管, 硬質塩ビライニング鋼管, 水道用硬質塩化ビニル管]
+
+  - canonical: 給湯管
+    category: 給湯
+    unit: m
+    aliases: [被覆銅管, 架橋ポリエチレン管, ポリブテン管]
+
+  - canonical: 排水管
+    category: 排水
+    unit: m
+    aliases: [硬質塩ビ排水管, 排水用鋳鉄管, 耐火二層管]
+
+  - canonical: 通気管
+    category: 通気
+    unit: m
+    aliases: [伸頂通気管, ループ通気管]
+
+  - canonical: 消火管
+    category: 消火
+    unit: m
+    aliases: [スプリンクラー配管, 屋内消火栓配管, 連結送水管]
+
+  - canonical: ガス管
+    category: ガス
+    unit: m
+    aliases: [ガス配管, 白ガス管, ガス用ポリエチレン管]
+
+  - canonical: 冷媒管
+    category: 冷媒
+    unit: m
+    aliases: [ペアコイル, 冷媒用銅管, 被覆冷媒銅管]
+
+  - canonical: ドレン管
+    category: ドレン
+    unit: m
+    aliases: [ドレン配管, 結露ドレン]
+
+  # ========================= 弁類・継手 =========================
+  - canonical: 仕切弁
+    category: 弁類
+    unit: 個
+    aliases: [ゲートバルブ, 玉形弁, ボール弁, バタフライ弁, 逆止弁, 止水栓]
+
+  - canonical: 継手
+    category: 継手
+    unit: 個
+    aliases: [エルボ, チーズ, ソケット, ニップル, レジューサ, 異径継手, フランジ]
+
+  # ========================= 衛生器具 =========================
+  - canonical: 大便器
+    category: 衛生器具
+    unit: 台
+    aliases: [洋式便器, 温水洗浄便座, タンクレス便器]
+
+  - canonical: 小便器
+    category: 衛生器具
+    unit: 台
+    aliases: [壁掛小便器]
+
+  - canonical: 洗面器
+    category: 衛生器具
+    unit: 台
+    aliases: [手洗器, 洗面化粧台]
+
+  - canonical: 掃除流し
+    category: 衛生器具
+    unit: 台
+    aliases: [掃除用流し, スロップシンク]
+
+  - canonical: 混合水栓
+    category: 衛生器具
+    unit: 個
+    aliases: [シングルレバー水栓, サーモスタット水栓, 給水栓]
+
+  # ========================= 設備機器 =========================
+  - canonical: 給湯器
+    category: 機器
+    unit: 台
+    aliases: [ガス給湯器, 給湯機, エコジョーズ, エコキュート, 壁掛給湯器]
+
+  - canonical: ポンプ
+    category: 機器
+    unit: 台
+    aliases: [給水ポンプ, 加圧給水ポンプ, 排水ポンプ, 水中ポンプ]
+
+  - canonical: 受水槽
+    category: 機器
+    unit: 台
+    aliases: [高置水槽, 貯水槽, FRP水槽]
+
+  - canonical: 空調室内機
+    category: 機器
+    unit: 台
+    aliases: [室内機, パッケージエアコン, ファンコイルユニット, ルームエアコン]
+
+  - canonical: 空調室外機
+    category: 機器
+    unit: 台
+    aliases: [室外機, 屋外機, コンデンシングユニット]
+
+  - canonical: 換気扇
+    category: 機器
+    unit: 台
+    aliases: [有圧換気扇, レンジフード, 換気ファン]
+
+  # ========================= ダクト =========================
+  - canonical: ダクト
+    category: ダクト
+    unit: m2
+    aliases: [スパイラルダクト, 角ダクト, 亜鉛鉄板ダクト]
+
+  - canonical: 吹出口
+    category: ダクト
+    unit: 個
+    aliases: [吹出し口, 給気口, アネモスタット, レジスター]
+
+  - canonical: 防火ダンパー
+    category: ダクト
+    unit: 個
+    aliases: [風量調整ダンパー, モーターダンパー]
+
+  # ========================= 付帯工事 =========================
+  - canonical: 保温
+    category: 保温
+    unit: m
+    aliases: [配管保温, 保温材, ラッキング, グラスウール保温]
+
+  - canonical: 支持金物
+    category: 支持金物
+    unit: 個
+    aliases: [吊りバンド, 形鋼振れ止め, 配管支持]
+
+  - canonical: はつり・復旧
+    category: はつり・復旧
+    unit: 箇所
+    aliases: [はつり, 斫り工事, コア抜き, スリーブ工事, 穴あけ復旧]
+
+  - canonical: 試験調整
+    category: 試験調整
+    unit: 式
+    aliases: [水圧試験, 満水試験, 通水試験, 気密試験, 試運転調整]
+
+  - canonical: 雑材・運搬
+    category: 雑材
+    unit: 式
+    aliases: [運搬費, 消耗品, 雑材料]

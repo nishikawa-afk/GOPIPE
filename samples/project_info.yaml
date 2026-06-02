@@ -1,0 +1,12 @@
+# F-16 申請ドラフト用の物件・指定事業者情報（サンプル）
+# 実案件ではこのファイルをコピーして書き換えて使う。
+# 未記入のキーはドラフト側で「（記入）」と表示される。
+
+project_name: サンプルマンション 101号室 給排水改修
+address: 東京都〇〇区〇〇町 1-2-3
+owner: 山田 太郎
+contractor_name: 株式会社サンプル設備
+contractor_number: 東水指 第1234号
+chief_engineer: 鈴木 一郎
+municipality: 東京都水道局
+work_type: 改造   # 新設 / 改造 / 撤去 / 修繕

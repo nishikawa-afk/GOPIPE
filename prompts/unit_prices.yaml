@@ -1,0 +1,119 @@
+# GOPIPE 配管・設備工事 単価マスタ（拾い出し → 見積ドラフト連携）
+#
+# 1 エントリ = 1 行の単価ルール。spec / category / name / vendor_id のうち
+# 「埋めたキー全部」が item と一致したときマッチし、specificity が高い順に採用。
+#   specificity: vendor_id=8 / spec=4 / category=2 / name=1
+#
+# unit_price     : 円 / unit（税抜・材工込みの社内目安）  ★必須
+# material_ratio : 0..1。材料比率（発注書の材工按分に使う）
+#
+# ※ 二系統運用（自社見積単価 / 公共公表単価＋標準歩掛）は、将来 vendor_id を
+#   "self" / "public" のように使い分けて上書きする想定。MVP は自社単価のみ。
+# ※ 価格はあくまで初期の仮値。実勢・自社基準で更新する。
+
+prices:
+  # ===================== 代表器具・機器（name 固有） =====================
+  - category: 衛生器具
+    name: 大便器
+    unit_price: 85000
+    unit: 台
+    material_ratio: 0.70
+    notes: 洋式・温水洗浄便座込みの標準品。撤去更新は別途
+  - category: 衛生器具
+    name: 洗面器
+    unit_price: 45000
+    unit: 台
+    material_ratio: 0.65
+  - category: 機器
+    name: 給湯器
+    unit_price: 150000
+    unit: 台
+    material_ratio: 0.70
+    notes: 24号 壁掛ガス給湯器 標準
+  - category: 機器
+    name: ポンプ
+    unit_price: 120000
+    unit: 台
+    material_ratio: 0.65
+
+  # ===================== 系統別カテゴリ デフォルト =====================
+  - category: 給水
+    unit_price: 3500
+    unit: m
+    material_ratio: 0.45
+    notes: 給水管 DN20 前後の材工込み目安
+  - category: 給湯
+    unit_price: 4200
+    unit: m
+    material_ratio: 0.50
+  - category: 排水
+    unit_price: 3000
+    unit: m
+    material_ratio: 0.45
+  - category: 通気
+    unit_price: 2600
+    unit: m
+    material_ratio: 0.45
+  - category: 消火
+    unit_price: 5500
+    unit: m
+    material_ratio: 0.45
+  - category: ガス
+    unit_price: 4800
+    unit: m
+    material_ratio: 0.50
+  - category: 冷媒
+    unit_price: 3800
+    unit: m
+    material_ratio: 0.55
+    notes: ペアコイル 2分3分 前後
+  - category: ドレン
+    unit_price: 2400
+    unit: m
+    material_ratio: 0.45
+  - category: 弁類
+    unit_price: 8000
+    unit: 個
+    material_ratio: 0.60
+  - category: 継手
+    unit_price: 1200
+    unit: 個
+    material_ratio: 0.55
+  - category: 衛生器具
+    unit_price: 60000
+    unit: 台
+    material_ratio: 0.65
+  - category: 機器
+    unit_price: 180000
+    unit: 台
+    material_ratio: 0.65
+  - category: ダクト
+    unit_price: 9000
+    unit: m2
+    material_ratio: 0.50
+  - category: 保温
+    unit_price: 1500
+    unit: m
+    material_ratio: 0.50
+  - category: 支持金物
+    unit_price: 1500
+    unit: 個
+    material_ratio: 0.55
+  - category: はつり・復旧
+    unit_price: 6000
+    unit: 箇所
+    material_ratio: 0.15
+  - category: 試験調整
+    unit_price: 50000
+    unit: 式
+    material_ratio: 0.05
+  - category: 雑材
+    unit_price: 30000
+    unit: 式
+    material_ratio: 0.60
+
+  # ===================== どこにも当たらない時 =====================
+  - category: その他
+    unit_price: 50000
+    unit: 式
+    material_ratio: 0.50

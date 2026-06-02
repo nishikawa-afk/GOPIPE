@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gopipe"
+version = "0.1.0"
+description = "GOPIPE: 配管・設備工事業者向け 拾い出し（積算）エンジン。GOREFORM track-a を母体に転用。"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+    "pymupdf>=1.24.0",
+    "openpyxl>=3.1.2",
+    "pillow>=10.3.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.1",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.5.0",
+    "black>=24.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["shared", "src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["shared", "src"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
