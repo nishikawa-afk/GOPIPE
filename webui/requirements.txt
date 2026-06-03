@@ -1,0 +1,10 @@
+# Streamlit Community Cloud（webui/app.py）用の依存。
+# UI(streamlit/pandas) + 拾い出しエンジンの実行時依存。API用の fastapi 等は不要。
+# ※ Vercel(API) は repo ルートの requirements.txt を使うので、この2つは独立。
+streamlit>=1.30.0
+pandas>=2.0.0
+pymupdf>=1.24.0
+anthropic>=0.40.0
+openpyxl>=3.1.2
+pydantic>=2.7.0
+pyyaml>=6.0.1
