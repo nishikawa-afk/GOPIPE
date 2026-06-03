@@ -14,6 +14,10 @@ venv/
 out/
 *.xlsx
 
+# 顧客の設備図PDF（public repo に出さない・ローカル検証用）
+samples/*.pdf
+samples/*.PDF
+
 # キャッシュ
 .pytest_cache/
 .ruff_cache/
