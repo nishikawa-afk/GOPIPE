@@ -1,0 +1,17 @@
+# Vercel へアップロードしない（バンドル削減・無関係物の除外）。
+# 残すのは API 実行に要る: api/ src/ shared/ prompts/ requirements.txt vercel.json
+.venv/
+out/
+webui/
+tests/
+samples/
+scripts/
+supabase/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.xlsx
+.env
+.env.local
+.secrets.local
+.git/

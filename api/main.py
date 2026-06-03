@@ -23,7 +23,9 @@ for _p in (ROOT / "src", ROOT / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-OUT = ROOT / "out"
+# Vercel 等サーバレスは /tmp 以外が読取専用。出力 xlsx は応答に含めない副産物なので
+# 書込可能な一時ディレクトリへ逃がす（run_takeoff が out_dir を mkdir する）。
+OUT = Path(tempfile.gettempdir()) / "gopipe_out"
 
 app = FastAPI(title="GOPIPE API", version="0.1.0")
 app.add_middleware(
