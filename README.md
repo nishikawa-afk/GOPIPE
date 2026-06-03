@@ -36,6 +36,16 @@ make web                                        # → http://localhost:8501
 
 設備図をアップロード（**mock ならPDF不要**）→「拾い出し実行」→ 拾い出し／見積／申請／予防保全／透明見積を**タブで実行・ダウンロード**。本体は `webui/app.py`。
 
+## REST API（FastAPI）― Next.js など外部から叩く
+
+```bash
+.venv/bin/python -m pip install -e ".[api]"
+.venv/bin/uvicorn api.main:app --port 8000     # http://localhost:8000/docs
+```
+
+エンドポイント: `POST /takeoff` `/estimate` `/application` `/maintenance` `/emergency`、`GET /municipalities` `/health`。
+mock は `provider=mock`（PDF不要）、本番は `provider=claude` ＋ PDF を multipart で送る。フロント（Next.js/Vercel）はこの API を呼ぶ構成。
+
 ## CLI での使い方
 
 ```bash
