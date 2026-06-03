@@ -78,9 +78,30 @@ def municipalities():
 
 
 @app.post("/takeoff")
-async def takeoff(provider: str = Form("mock"), file: UploadFile | None = File(None)):
+async def takeoff(
+    provider: str = Form("mock"),
+    persist: bool = Form(False),
+    org_slug: str = Form("default"),
+    project_slug: str = Form("takeoff"),
+    title: str = Form(""),
+    file: UploadFile | None = File(None),
+):
     result = _takeoff(provider, file)
-    return {"count": len(result.items), "items": _items_json(result.items)}
+    resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
+    if persist:
+        from gopipe_takeoff import store
+
+        if store.is_enabled():
+            try:
+                resp["persisted"] = store.persist_takeoff(
+                    org_slug=org_slug, org_name=org_slug,
+                    project_slug=project_slug, title=title, items=result.items,
+                )
+            except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
+                resp["persisted"] = {"error": str(e)}
+        else:
+            resp["persisted"] = {"error": "Supabase 未設定（SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）"}
+    return resp
 
 
 @app.post("/estimate")
