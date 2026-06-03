@@ -25,7 +25,13 @@ class MockClient:
       {"page": 1, "name": "洗面器", "spec": "LIXIL L-2151", "quantity": 2, "unit": "台", "location": "1F 便所", "confidence": 0.9},
       {"page": 1, "name": "壁掛ガス給湯器", "spec": "RUF-24A", "quantity": 1, "unit": "台", "location": "1F 屋外", "confidence": 0.85},
       {"page": 1, "name": "配管保温(GW20mm)", "spec": "給水管 GW20mm", "quantity": 28.5, "unit": "m", "location": "1F 給水系統", "confidence": 0.7},
-      {"page": 1, "name": "冷媒管(ペアコイル)", "spec": "2分3分", "quantity": 16.0, "unit": "m", "location": "1F 空調", "confidence": 0.75}
+      {"page": 1, "name": "冷媒管(ペアコイル)", "spec": "2分3分", "quantity": 16.0, "unit": "m", "location": "1F 空調", "confidence": 0.75},
+      {"page": 1, "name": "断熱材(グラスウール)", "spec": "高性能GW16K t90", "quantity": 120.0, "unit": "m2", "location": "外壁", "confidence": 0.8},
+      {"page": 1, "name": "押出法ポリスチレンフォーム", "spec": "XPS t50", "quantity": 65.0, "unit": "m2", "location": "1F 床", "confidence": 0.8},
+      {"page": 1, "name": "硬質ウレタンフォーム", "spec": "吹付 t30", "quantity": 80.0, "unit": "m2", "location": "屋根", "confidence": 0.75},
+      {"page": 1, "name": "防湿気密シート", "spec": "0.2mm", "quantity": 120.0, "unit": "m2", "location": "外壁", "confidence": 0.7},
+      {"page": 1, "name": "保温筒", "spec": "GW20mm", "quantity": 28.5, "unit": "m", "location": "1F 給水系統", "confidence": 0.75},
+      {"page": 1, "name": "ラッキング", "spec": "アルミ0.3mm", "quantity": 18.0, "unit": "m2", "location": "屋外配管", "confidence": 0.7}
     ]"""
 
     def __init__(self, **_: object) -> None:

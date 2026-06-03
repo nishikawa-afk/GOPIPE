@@ -136,7 +136,7 @@ entries:
   - canonical: 保温
     category: 保温
     unit: m
-    aliases: [配管保温, 保温材, ラッキング, グラスウール保温]
+    aliases: [配管保温, 保温材, グラスウール保温]
 
   - canonical: 支持金物
     category: 支持金物
@@ -157,3 +157,61 @@ entries:
     category: 雑材
     unit: 式
     aliases: [運搬費, 消耗品, 雑材料]
+
+  # ===================== 設備保温（配管・ダクト）強化 =====================
+  - canonical: 保温筒
+    category: 保温
+    unit: m
+    aliases: [グラスウール保温筒, ロックウール保温筒, 配管保温筒, 保温筒材]
+
+  - canonical: ラッキング
+    category: 保温
+    unit: m2
+    aliases: [アルミラッキング, ステンレスラッキング, カラー鋼板ラッキング, ラッキングカバー, 外装ラッキング]
+
+  # ===================== 建築断熱（壁/天井/床/屋根/基礎） =====================
+  - canonical: 断熱材(グラスウール)
+    category: 断熱材
+    unit: m2
+    aliases: [高性能グラスウール, グラスウール断熱, グラスウール充填, GW断熱]
+
+  - canonical: 断熱材(ロックウール)
+    category: 断熱材
+    unit: m2
+    aliases: [ロックウール断熱, RW断熱, ロックウール充填]
+
+  - canonical: 押出法ポリスチレンフォーム
+    category: 断熱材
+    unit: m2
+    aliases: [スタイロフォーム, 押出ポリスチレン, ミラフォーム, XPS断熱]
+
+  - canonical: ビーズ法ポリスチレンフォーム
+    category: 断熱材
+    unit: m2
+    aliases: [ビーズ法ポリスチレン, EPS断熱, 発泡スチロール断熱]
+
+  - canonical: 硬質ウレタンフォーム
+    category: 断熱材
+    unit: m2
+    aliases: [吹付ウレタン, 現場発泡ウレタン, 硬質ウレタン吹付, 発泡ウレタン断熱]
+
+  - canonical: フェノールフォーム
+    category: 断熱材
+    unit: m2
+    aliases: [ネオマフォーム, フェノールフォーム断熱, フェノール断熱]
+
+  - canonical: セルロースファイバー
+    category: 断熱材
+    unit: m2
+    aliases: [セルローズファイバー, 吹込み断熱, 吹き込み断熱]
+
+  # ===================== 気密・防湿（建築） =====================
+  - canonical: 防湿気密シート
+    category: 気密防湿
+    unit: m2
+    aliases: [防湿フィルム, 気密シート, ベーパーバリア, 防湿層]
+
+  - canonical: 気密テープ
+    category: 気密防湿
+    unit: m
+    aliases: [気密防水テープ, 防湿テープ, 気密用テープ]
