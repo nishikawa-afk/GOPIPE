@@ -31,7 +31,11 @@ class MockClient:
       {"page": 1, "name": "硬質ウレタンフォーム", "spec": "吹付 t30", "quantity": 80.0, "unit": "m2", "location": "屋根", "confidence": 0.75},
       {"page": 1, "name": "防湿気密シート", "spec": "0.2mm", "quantity": 120.0, "unit": "m2", "location": "外壁", "confidence": 0.7},
       {"page": 1, "name": "保温筒", "spec": "GW20mm", "quantity": 28.5, "unit": "m", "location": "1F 給水系統", "confidence": 0.75},
-      {"page": 1, "name": "ラッキング", "spec": "アルミ0.3mm", "quantity": 18.0, "unit": "m2", "location": "屋外配管", "confidence": 0.7}
+      {"page": 1, "name": "ラッキング", "spec": "アルミ0.3mm", "quantity": 18.0, "unit": "m2", "location": "屋外配管", "confidence": 0.7},
+      {"page": 1, "name": "冷温水配管", "spec": "鋼管 80A", "quantity": 45.0, "unit": "m", "location": "1F 空調 氷蓄熱系統", "confidence": 0.8},
+      {"page": 1, "name": "圧力計", "spec": "0〜0.6MPa", "quantity": 6, "unit": "個", "location": "1F 機械室", "confidence": 0.85},
+      {"page": 1, "name": "電動弁", "spec": "MV 80A", "quantity": 4, "unit": "個", "location": "1F 空調 氷蓄熱系統", "confidence": 0.8},
+      {"page": 1, "name": "全熱交換器", "spec": "HEX-1 250型", "quantity": 2, "unit": "台", "location": "1F 各室", "confidence": 0.85}
     ]"""
 
     def __init__(self, **_: object) -> None:

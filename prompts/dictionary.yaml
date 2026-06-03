@@ -215,3 +215,74 @@ entries:
     category: 気密防湿
     unit: m
     aliases: [気密防水テープ, 防湿テープ, 気密用テープ]
+
+  # ===================== 空調（冷温水・計装・端末・自動弁） =====================
+  - canonical: 冷温水配管
+    category: 冷温水
+    unit: m
+    aliases: [冷水管, 温水管, 冷温水管, 空調冷温水, 冷却水管, ブライン管, 蓄熱配管]
+
+  - canonical: 圧力計
+    category: 計装
+    unit: 個
+    aliases: [連成計, 圧力ゲージ]
+
+  - canonical: 温度計
+    category: 計装
+    unit: 個
+    aliases: [温度センサー, 温度ゲージ]
+
+  - canonical: 流量計
+    category: 計装
+    unit: 個
+    aliases: [流量センサー, フローメータ]
+
+  - canonical: Y型ストレーナ
+    category: 弁類
+    unit: 個
+    aliases: [ストレーナ, Y形ストレーナ, ストレーナー]
+
+  - canonical: フレキシブルジョイント
+    category: 継手
+    unit: 個
+    aliases: [ゴムフレキ, SUSフレキ, フレキ継手, 防振継手]
+
+  - canonical: 電動弁
+    category: 弁類
+    unit: 個
+    aliases: [電磁弁, 電動二方弁, 電動三方弁, 自動制御弁]
+
+  - canonical: 安全弁
+    category: 弁類
+    unit: 個
+    aliases: [逃し弁, リリーフ弁, 安全逃し弁]
+
+  - canonical: 自動エア抜き弁
+    category: 弁類
+    unit: 個
+    aliases: [エア抜き弁, 自動空気抜き弁, 空気抜き弁]
+
+  - canonical: 吸込口
+    category: ダクト
+    unit: 個
+    aliases: [吸込み口, 吸気口, リターングリル, リターンガラリ]
+
+  - canonical: 排気口
+    category: ダクト
+    unit: 個
+    aliases: [排気グリル, 排気ガラリ, EAガラリ]
+
+  - canonical: 外気取入口
+    category: ダクト
+    unit: 個
+    aliases: [外気取り入れ口, 外気ガラリ, OAガラリ, 外気フード]
+
+  - canonical: チャッキダンパー
+    category: ダクト
+    unit: 個
+    aliases: [逆風防止ダンパー, 逆止ダンパー]
+
+  - canonical: 全熱交換器
+    category: 機器
+    unit: 台
+    aliases: [熱交換器, ロスナイ, 換気ユニット, 全熱交]

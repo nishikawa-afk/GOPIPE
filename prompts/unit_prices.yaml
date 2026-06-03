@@ -134,6 +134,18 @@ prices:
     unit: m
     material_ratio: 0.50
 
+  # ===================== 空調（冷温水・計装）=====================
+  - category: 冷温水
+    unit_price: 4500
+    unit: m
+    material_ratio: 0.50
+    notes: 空調冷温水/冷却水管（鋼管）の材工目安。保温は別途
+  - category: 計装
+    unit_price: 12000
+    unit: 個
+    material_ratio: 0.60
+    notes: 圧力計・温度計・流量計など計装品
+
   # ===================== どこにも当たらない時 =====================
   - category: その他
     unit_price: 50000
