@@ -64,6 +64,14 @@ def _takeoff(provider: str, file: UploadFile | None):
     return run_takeoff(str(pdf), str(OUT))
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    # 素の URL はルート未定義で 404 になるため、/docs(Swagger UI) へ誘導する
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
