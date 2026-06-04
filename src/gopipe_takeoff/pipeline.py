@@ -36,6 +36,7 @@ class TakeoffPipeline:
         *,
         grid: int = 1,
         two_pass: bool = False,
+        use_text_table: bool = True,
     ) -> TakeoffResult:
         """PDF → 拾い出し Excel + マーカー PDF を出力する。
 
@@ -56,8 +57,8 @@ class TakeoffPipeline:
         drawing = load_pdf(input_pdf, grid=grid)
         logger.info("pages=%d", len(drawing.pages))
 
-        logger.info("extracting items via LLM ...")
-        raw_items = extract(drawing, two_pass=two_pass)
+        logger.info("extracting items via LLM (use_text_table=%s) ...", use_text_table)
+        raw_items = extract(drawing, two_pass=two_pass, use_text_table=use_text_table)
         logger.info("extracted=%d items", len(raw_items))
 
         logger.info("classifying ...")
@@ -86,5 +87,8 @@ def run_takeoff(
     *,
     grid: int = 1,
     two_pass: bool = False,
+    use_text_table: bool = True,
 ) -> TakeoffResult:
-    return TakeoffPipeline().run(input_pdf, out_dir, grid=grid, two_pass=two_pass)
+    return TakeoffPipeline().run(
+        input_pdf, out_dir, grid=grid, two_pass=two_pass, use_text_table=use_text_table
+    )
