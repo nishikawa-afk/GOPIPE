@@ -281,3 +281,34 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
         "subtotal": est.subtotal,
         "total": est.total,
     }
+
+
+@app.post("/riser")
+async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
+    """系統図×階高 → 立管・隠蔽配管の延長/継手/弁を積算した拾い出し＋見積。
+
+    平面図に長さが出ない立管を 階高×階数×本数 で延長(m)化し、継手・弁も階数比例で積算する。
+
+    risers 例: [{"name":"給水立管 PS-1","floors":5,"floor_height_m":3.2,"count":2,
+                 "spec":"VLP DN20","material":"給水管","branch_per_floor_m":3,
+                 "fittings_per_floor":2,"valves_per_floor":1}]
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.pricer import Pricer
+    from gopipe_takeoff.riser_estimate import risers_from_dicts, to_takeoff_items
+
+    items = classify(
+        to_takeoff_items(risers_from_dicts(risers)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
