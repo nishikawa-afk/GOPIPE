@@ -52,6 +52,100 @@ st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫�
 
 st.title("GOPIPE — 設備拾い出しから見積・申請・保全まで")
 
+# ----------------------------- 断熱面積（実測/LiDAR・PDF不要） -----------------------------
+with st.expander("🧱 断熱面積を計算（実測 / LiDAR・PDF不要）"):
+    st.caption(
+        "部屋の寸法 or 面積を入れて断熱面積(壁/天井/床 m²)→見積。"
+        "LiDARアプリ(RoomPlan/Polycam等)の床面積・壁面積もそのまま使えます。"
+        "外壁長を入れると内壁の二重計上を避け高精度に。"
+    )
+    _df0 = pd.DataFrame([
+        {"室名": "LDK", "幅m": 5.4, "奥行m": 4.2, "天井高m": 2.5, "外壁長m": 12.0,
+         "開口m2": 8.0, "床面積m2": None, "壁面積m2": None,
+         "材種": "断熱材(グラスウール)", "厚みmm": 105, "部位": "壁;天井;床"},
+    ])
+    _edited = st.data_editor(_df0, num_rows="dynamic", use_container_width=True, key="ins_rooms")
+    if st.button("断熱面積を算出", key="ins_run", type="primary"):
+        from gopipe_takeoff.classifier import classify
+        from gopipe_takeoff.dictionary import TakeoffDictionary
+        from gopipe_takeoff.estimate import build_estimate
+        from gopipe_takeoff.insulation_area import rooms_from_dicts, to_takeoff_items
+        from gopipe_takeoff.pricer import Pricer
+
+        _clean = _edited.astype(object).where(pd.notna(_edited), None)
+        _recs = [
+            {
+                "name": r.get("室名"), "width_m": r.get("幅m"), "depth_m": r.get("奥行m"),
+                "height_m": r.get("天井高m"), "exterior_wall_len_m": r.get("外壁長m"),
+                "openings_m2": r.get("開口m2"), "floor_area_m2": r.get("床面積m2"),
+                "wall_area_m2": r.get("壁面積m2"), "material": r.get("材種"),
+                "thickness_mm": r.get("厚みmm"), "surfaces": r.get("部位"),
+            }
+            for _, r in _clean.iterrows()
+        ]
+        _ins = classify(
+            to_takeoff_items(rooms_from_dicts(_recs)),
+            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        )
+        if _ins:
+            st.dataframe(
+                pd.DataFrame([
+                    {"カテゴリ": it.category, "材種": it.name, "仕様": it.spec, "場所": it.location,
+                     "数量": it.quantity, "単位": it.unit, "信頼度": round(it.confidence, 2)}
+                    for it in _ins
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            _est = build_estimate(_ins, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            st.metric("断熱 見積（税込）", f"¥{_est.total:,}")
+        else:
+            st.warning("面積が算出できませんでした。寸法（幅・奥行・天井高）か、床面積/壁面積を入れてください。")
+
+# ----------------------------- 現地実測（ダクト/配管/台数・LiDAR/巻尺・PDF不要） -----------------------------
+with st.expander("📏 現地実測（ダクト/配管/台数・LiDAR/巻尺・PDF不要）"):
+    st.caption(
+        "SiteScape/巻尺で測った値を入れて空調拾い出し→見積。"
+        "角ダクト=幅×高さ×延長→展開面積m²、丸ダクト=φ×延長、配管=口径×延長m、端末/機器=個数/台数。"
+        "（種別: 角ダクト / 丸ダクト / 配管 / 個数 / 台数）"
+    )
+    _m0 = pd.DataFrame([
+        {"種別": "角ダクト", "名称": "角ダクト", "幅mm": 500, "高さmm": 400, "口径mm": None, "延長m": 10.0, "個数": None, "場所": "1F 天井内"},
+        {"種別": "配管", "名称": "冷温水配管", "幅mm": None, "高さmm": None, "口径mm": 80, "延長m": 12.0, "個数": None, "場所": "機械室"},
+        {"種別": "個数", "名称": "吹出口", "幅mm": None, "高さmm": None, "口径mm": None, "延長m": None, "個数": 8, "場所": "1F 事務室"},
+    ])
+    _me = st.data_editor(_m0, num_rows="dynamic", use_container_width=True, key="sm_rows")
+    if st.button("実測から算出", key="sm_run", type="primary"):
+        from gopipe_takeoff.classifier import classify
+        from gopipe_takeoff.dictionary import TakeoffDictionary
+        from gopipe_takeoff.estimate import build_estimate
+        from gopipe_takeoff.pricer import Pricer
+        from gopipe_takeoff.site_measure import items_from_measures
+
+        _c = _me.astype(object).where(pd.notna(_me), None)
+        _ms = [
+            {"kind": r.get("種別"), "name": r.get("名称"), "width_mm": r.get("幅mm"),
+             "height_mm": r.get("高さmm"), "dia_mm": r.get("口径mm"), "length_m": r.get("延長m"),
+             "count": r.get("個数"), "location": r.get("場所")}
+            for _, r in _c.iterrows()
+        ]
+        _si = classify(
+            items_from_measures(_ms),
+            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        )
+        if _si:
+            st.dataframe(
+                pd.DataFrame([
+                    {"カテゴリ": it.category, "名称": it.name, "仕様": it.spec, "場所": it.location,
+                     "数量": it.quantity, "単位": it.unit, "信頼度": round(it.confidence, 2)}
+                    for it in _si
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            _e = build_estimate(_si, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            st.metric("空調(実測) 見積（税込）", f"¥{_e.total:,}")
+        else:
+            st.warning("算出できませんでした。種別（角ダクト/丸ダクト/配管/個数/台数）と寸法・個数を入れてください。")
+
 # ----------------------------- 実行 -----------------------------
 if run:
     if uploaded is not None:

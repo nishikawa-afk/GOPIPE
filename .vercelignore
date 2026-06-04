@@ -1,0 +1,22 @@
+# Vercel へアップロードしない（バンドル削減・無関係物の除外）。
+# 残すのは API 実行に要る: api/ src/ shared/ prompts/ requirements.txt vercel.json
+#
+# pyproject.toml を除外する理由: @vercel/python は pyproject があると uv で
+# [project.dependencies]（コア）のみ入れ、fastapi/python-multipart は [api] extra の
+# ため未インストール→起動時 import 失敗。除外して requirements.txt を使わせる。
+pyproject.toml
+.venv/
+out/
+webui/
+tests/
+samples/
+scripts/
+supabase/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.xlsx
+.env
+.env.local
+.secrets.local
+.git/

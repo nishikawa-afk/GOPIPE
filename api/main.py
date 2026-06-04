@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +23,9 @@ for _p in (ROOT / "src", ROOT / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-OUT = ROOT / "out"
+# Vercel 等サーバレスは /tmp 以外が読取専用。出力 xlsx は応答に含めない副産物なので
+# 書込可能な一時ディレクトリへ逃がす（run_takeoff が out_dir を mkdir する）。
+OUT = Path(tempfile.gettempdir()) / "gopipe_out"
 
 app = FastAPI(title="GOPIPE API", version="0.1.0")
 app.add_middleware(
@@ -62,6 +64,14 @@ def _takeoff(provider: str, file: UploadFile | None):
     return run_takeoff(str(pdf), str(OUT))
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    # 素の URL はルート未定義で 404 になるため、/docs(Swagger UI) へ誘導する
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -76,9 +86,30 @@ def municipalities():
 
 
 @app.post("/takeoff")
-async def takeoff(provider: str = Form("mock"), file: UploadFile | None = File(None)):
+async def takeoff(
+    provider: str = Form("mock"),
+    persist: bool = Form(False),
+    org_slug: str = Form("default"),
+    project_slug: str = Form("takeoff"),
+    title: str = Form(""),
+    file: UploadFile | None = File(None),
+):
     result = _takeoff(provider, file)
-    return {"count": len(result.items), "items": _items_json(result.items)}
+    resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
+    if persist:
+        from gopipe_takeoff import store
+
+        if store.is_enabled():
+            try:
+                resp["persisted"] = store.persist_takeoff(
+                    org_slug=org_slug, org_name=org_slug,
+                    project_slug=project_slug, title=title, items=result.items,
+                )
+            except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
+                resp["persisted"] = {"error": str(e)}
+        else:
+            resp["persisted"] = {"error": "Supabase 未設定（SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）"}
+    return resp
 
 
 @app.post("/estimate")
@@ -190,4 +221,126 @@ async def emergency(symptom: str = Form(...)):
             for c in cands
         ],
         "markdown": build_quote_card(symptom, cands),
+    }
+
+
+@app.post("/insulation")
+async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
+    """部屋寸法/面積（LiDAR・手測り）→ 断熱面積(壁/天井/床 m²)の拾い出し＋見積。
+
+    rooms 例: [{"name":"LDK","width_m":5.4,"depth_m":4.2,"height_m":2.5,
+                "exterior_wall_len_m":12,"openings_m2":8,
+                "material":"断熱材(グラスウール)","thickness_mm":105}]
+    LiDAR が面積を直接出す場合は floor_area_m2 / wall_area_m2 でも可。
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.insulation_area import rooms_from_dicts, to_takeoff_items
+    from gopipe_takeoff.pricer import Pricer
+
+    items = classify(
+        to_takeoff_items(rooms_from_dicts(rooms)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
+
+
+@app.post("/site_measure")
+async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10):
+    """現地実測（LiDAR/巻尺）→ 空調・配管の拾い出し＋見積。
+
+    measures 例: [{"kind":"角ダクト","name":"角ダクト","width_mm":500,"height_mm":400,"length_m":10},
+                  {"kind":"配管","name":"冷温水配管","dia_mm":80,"length_m":12},
+                  {"kind":"個数","name":"吹出口","count":8}]
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.pricer import Pricer
+    from gopipe_takeoff.site_measure import items_from_measures
+
+    items = classify(
+        items_from_measures(measures),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
+
+
+@app.post("/riser")
+async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
+    """系統図×階高 → 立管・隠蔽配管の延長/継手/弁を積算した拾い出し＋見積。
+
+    平面図に長さが出ない立管を 階高×階数×本数 で延長(m)化し、継手・弁も階数比例で積算する。
+
+    risers 例: [{"name":"給水立管 PS-1","floors":5,"floor_height_m":3.2,"count":2,
+                 "spec":"VLP DN20","material":"給水管","branch_per_floor_m":3,
+                 "fittings_per_floor":2,"valves_per_floor":1}]
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.pricer import Pricer
+    from gopipe_takeoff.riser_estimate import risers_from_dicts, to_takeoff_items
+
+    items = classify(
+        to_takeoff_items(risers_from_dicts(risers)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
+
+
+@app.post("/legend_count")
+async def legend_count(file: UploadFile | None = File(None), overhead: float = 0.10):
+    """凡例（記号→名称）を解析し、テキスト層の記号出現数を機械カウント → 個数モノの拾い出し＋見積。
+
+    ベクターPDF専用（テキスト層が必要）。スキャン図やテキスト層が無い場合は 0 件を返す。
+    各記号は「総出現数 − 凡例定義1回」を図面配置数として個でカウントする。
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.legend_count import count_from_pdf
+    from gopipe_takeoff.pricer import Pricer
+
+    pdf = _save_upload(file)
+    if not Path(pdf).exists():
+        return {"count": 0, "items": [], "subtotal": 0, "total": 0,
+                "note": "ベクターPDF（テキスト層あり）をアップロードしてください"}
+    items = classify(
+        count_from_pdf(str(pdf)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
     }

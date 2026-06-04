@@ -28,6 +28,7 @@ class TakeoffItem(BaseModel):
     bbox: BBox | None = None
     category: str | None = None  # 内訳カテゴリ（分類後に埋まる）
     confidence: float = 1.0  # 0..1
+    source: str | None = None  # 抽出由来: "text_table" | "reconciled"（vision 由来は None）
 
 
 class Tile(BaseModel):

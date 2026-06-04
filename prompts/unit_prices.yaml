@@ -112,6 +112,40 @@ prices:
     unit: 式
     material_ratio: 0.60
 
+  # ============== 断熱・気密（建築）／設備保温（強化）==============
+  - category: 断熱材
+    unit_price: 2800
+    unit: m2
+    material_ratio: 0.55
+    notes: 充填断熱(GW/RW)・ボード系の材工目安。厚み・部位で変動
+  - category: 気密防湿
+    unit_price: 700
+    unit: m2
+    material_ratio: 0.45
+    notes: 防湿気密シート張りの目安
+  - category: 保温
+    name: ラッキング
+    unit_price: 4500
+    unit: m2
+    material_ratio: 0.55
+  - category: 保温
+    name: 保温筒
+    unit_price: 1800
+    unit: m
+    material_ratio: 0.50
+
+  # ===================== 空調（冷温水・計装）=====================
+  - category: 冷温水
+    unit_price: 4500
+    unit: m
+    material_ratio: 0.50
+    notes: 空調冷温水/冷却水管（鋼管）の材工目安。保温は別途
+  - category: 計装
+    unit_price: 12000
+    unit: 個
+    material_ratio: 0.60
+    notes: 圧力計・温度計・流量計など計装品
+
   # ===================== どこにも当たらない時 =====================
   - category: その他
     unit_price: 50000

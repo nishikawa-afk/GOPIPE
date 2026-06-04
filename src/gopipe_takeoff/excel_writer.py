@@ -12,6 +12,19 @@ from .models import TakeoffItem
 HEADER = ["No", "カテゴリ", "名称", "仕様", "場所", "数量", "単位", "ページ", "備考"]
 
 
+def _note(it: TakeoffItem) -> str:
+    """備考列の文言。低信頼は要確認、機器表由来は確定根拠を示す。"""
+    if it.confidence < 0.7:
+        return f"要確認(信頼度{it.confidence:.2f})"
+    if it.source == "reconciled":
+        return "機器表で数量確定"
+    if it.source == "text_table":
+        return "機器表から抽出"
+    if it.source == "legend_count":
+        return "凡例から記号カウント"
+    return ""
+
+
 def write_excel(items: list[TakeoffItem], out_path: str | Path) -> Path:
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +57,7 @@ def write_excel(items: list[TakeoffItem], out_path: str | Path) -> Path:
                 it.quantity,
                 it.unit,
                 it.page,
-                "" if it.confidence >= 0.7 else f"要確認(信頼度{it.confidence:.2f})",
+                _note(it),
             ]
         )
 

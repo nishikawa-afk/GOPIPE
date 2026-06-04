@@ -8,6 +8,7 @@ from pathlib import Path
 
 from llm_client import LLMClient, LLMMessage, get_llm_client
 
+from .equipment_table import extract_from_text
 from .models import BBox, Drawing, DrawingPage, TakeoffItem, Tile
 
 logger = logging.getLogger("gopipe.extractor")
@@ -125,6 +126,79 @@ def _dedupe_items(items: list[TakeoffItem]) -> list[TakeoffItem]:
     return [by_key[k] for k in order]
 
 
+def _qty_close(a: float, b: float, tol: float = 0.05) -> bool:
+    hi = max(abs(a), abs(b))
+    return True if hi == 0 else abs(a - b) / hi <= tol
+
+
+def _spec_match(a: str | None, b: str | None) -> bool:
+    """型番/口径の一致。完全一致 or 3文字以上の包含（'DN20'⊂'GV DN20' 等）。"""
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    return len(min(na, nb, key=len)) >= 3 and (na in nb or nb in na)
+
+
+def _find_table_match(items: list[TakeoffItem], ti: TakeoffItem) -> TakeoffItem | None:
+    """機器表行 ti に対応する vision 抽出項目を探す（spec 一致優先、無ければ name 一致）。"""
+    if ti.spec and _norm(ti.spec):
+        for it in items:
+            if _spec_match(it.spec, ti.spec):
+                return it
+    tn = _norm(ti.name)
+    if tn:
+        for it in items:
+            inm = _norm(it.name)
+            if inm and (inm == tn or (len(inm) >= 3 and inm in tn)):
+                return it
+    return None
+
+
+def reconcile_with_text_table(
+    vision_items: list[TakeoffItem], page_text: str, *, page: int = 1,
+) -> list[TakeoffItem]:
+    """テキスト層の機器表（確定情報）で vision 抽出を補正・補完する。
+
+    ベクター(CAD)PDF はテキスト層に台数・型番・口径が「文字」で入っているため、
+    画像認識より正確。本処理は:
+      - 機器表に対応する vision 項目があれば数量・型番を機器表優先で採用し、
+        信頼度を引き上げる（数量ズレは警告ログ）。
+      - vision に無い機器表項目は「拾い漏れ」として追加する。
+      - テキスト層が無い（画像 PDF）場合は vision をそのまま返す（フォールバック）。
+    """
+    table_items = extract_from_text(page_text or "", page=page)
+    if not table_items:
+        return vision_items
+
+    result = list(vision_items)
+    matched = mismatched = added = 0
+    for ti in table_items:
+        m = _find_table_match(result, ti)
+        if m is None:
+            ti.source = "text_table"
+            result.append(ti)
+            added += 1
+            continue
+        matched += 1
+        if not _qty_close(m.quantity, ti.quantity):
+            logger.warning(
+                "page %d: 数量ズレ '%s' vision=%s 機器表=%s → 機器表を採用",
+                page, m.name, m.quantity, ti.quantity,
+            )
+            mismatched += 1
+        m.quantity = ti.quantity
+        if ti.spec and not (m.spec and m.spec.strip()):
+            m.spec = ti.spec
+        m.confidence = max(m.confidence, 0.95)
+        m.source = "reconciled"
+    logger.info(
+        "page %d: 機器表突合 matched=%d (ズレ%d) added=%d", page, matched, mismatched, added
+    )
+    return result
+
+
 def _extract_symbol_codes(text: str) -> list[str]:
     """テキスト層から図面記号コードを抽出する（例: EI2-GR06, GR01, SOK-A 等）。"""
     if not text:
@@ -164,7 +238,7 @@ def _whole_page_user_text(page: DrawingPage, symbol_codes: list[str]) -> str:
     return (
         f"## ページ {page.page}\n"
         f"このページから拾い出し項目を JSON 配列で返してください。\n"
-        f"テキスト層: {page.text[:4000] if page.text else '(なし)'}"
+        f"テキスト層（機器表・数量表があれば最優先で使う）: {page.text[:8000] if page.text else '(なし)'}"
         f"{codes_hint}"
     )
 
@@ -204,6 +278,7 @@ def extract(
     *,
     client: LLMClient | None = None,
     two_pass: bool = False,
+    use_text_table: bool = True,
 ) -> list[TakeoffItem]:
     """各ページを LLM に投げて TakeoffItem のリストを返す。
 
@@ -215,6 +290,9 @@ def extract(
     DrawingPage に tiles が乗っていれば、各タイルを個別に LLM 呼び出しし、
     最後に spec / (cat,name) で重複除去する。タイル分割時の bbox は無視する。
     画像も tile も無いページはテキストのみで投げる（フォールバック）。
+
+    use_text_table=True のとき、各ページのテキスト層(機器表/数量表)から確定情報を
+    抽出し、vision 結果と突合する（数量・型番を機器表優先で採用、拾い漏れを補完）。
     """
     client = client or get_llm_client()
     system_prompt = _load_prompt(PROMPT_PATH)
@@ -275,6 +353,15 @@ def extract(
             before = len(combined)
             page_items = _dedupe_items(combined)
             logger.info("page %d: after dedup %d → %d items", page.page, before, len(page_items))
+
+        # ---- 機器表テキスト層との突合（確定情報を優先）----
+        if use_text_table:
+            before = len(page_items)
+            page_items = reconcile_with_text_table(page_items, page.text or "", page=page.page)
+            if len(page_items) != before:
+                logger.info(
+                    "page %d: 機器表突合で %d → %d items", page.page, before, len(page_items)
+                )
 
         all_items.extend(page_items)
 
