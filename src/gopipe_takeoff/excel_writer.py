@@ -20,6 +20,8 @@ def _note(it: TakeoffItem) -> str:
         return "機器表で数量確定"
     if it.source == "text_table":
         return "機器表から抽出"
+    if it.source == "legend_count":
+        return "凡例から記号カウント"
     return ""
 
 

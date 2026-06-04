@@ -312,3 +312,35 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
         "subtotal": est.subtotal,
         "total": est.total,
     }
+
+
+@app.post("/legend_count")
+async def legend_count(file: UploadFile | None = File(None), overhead: float = 0.10):
+    """凡例（記号→名称）を解析し、テキスト層の記号出現数を機械カウント → 個数モノの拾い出し＋見積。
+
+    ベクターPDF専用（テキスト層が必要）。スキャン図やテキスト層が無い場合は 0 件を返す。
+    各記号は「総出現数 − 凡例定義1回」を図面配置数として個でカウントする。
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.legend_count import count_from_pdf
+    from gopipe_takeoff.pricer import Pricer
+
+    pdf = _save_upload(file)
+    if not Path(pdf).exists():
+        return {"count": 0, "items": [], "subtotal": 0, "total": 0,
+                "note": "ベクターPDF（テキスト層あり）をアップロードしてください"}
+    items = classify(
+        count_from_pdf(str(pdf)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
