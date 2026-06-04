@@ -252,3 +252,32 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
         "subtotal": est.subtotal,
         "total": est.total,
     }
+
+
+@app.post("/site_measure")
+async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10):
+    """現地実測（LiDAR/巻尺）→ 空調・配管の拾い出し＋見積。
+
+    measures 例: [{"kind":"角ダクト","name":"角ダクト","width_mm":500,"height_mm":400,"length_m":10},
+                  {"kind":"配管","name":"冷温水配管","dia_mm":80,"length_m":12},
+                  {"kind":"個数","name":"吹出口","count":8}]
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.pricer import Pricer
+    from gopipe_takeoff.site_measure import items_from_measures
+
+    items = classify(
+        items_from_measures(measures),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
+    }
