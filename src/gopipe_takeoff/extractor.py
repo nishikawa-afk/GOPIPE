@@ -164,7 +164,7 @@ def _whole_page_user_text(page: DrawingPage, symbol_codes: list[str]) -> str:
     return (
         f"## ページ {page.page}\n"
         f"このページから拾い出し項目を JSON 配列で返してください。\n"
-        f"テキスト層: {page.text[:4000] if page.text else '(なし)'}"
+        f"テキスト層（機器表・数量表があれば最優先で使う）: {page.text[:8000] if page.text else '(なし)'}"
         f"{codes_hint}"
     )
 
