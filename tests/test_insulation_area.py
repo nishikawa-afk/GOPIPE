@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "shared"))
 
 from gopipe_takeoff.insulation_area import (  # noqa: E402
     Room,
+    load_rooms_csv,
     room_areas,
     rooms_from_dicts,
     to_takeoff_items,
@@ -67,3 +68,30 @@ def test_rooms_from_dicts_import():
     items = to_takeoff_items(rooms)
     assert {it.location for it in items} == {"寝室 天井", "寝室 床"}  # 壁は対象外
     assert all(it.name == "硬質ウレタンフォーム" for it in items)
+
+
+def test_area_direct_input_lidar():
+    # LiDAR が床面積・壁面積を直接出すケース（寸法 W×D 無しでも可）
+    r = Room("LDK", floor_area_m2=22.7, wall_area_m2=40.0)
+    a = room_areas(r)
+    assert a["壁"] == 40.0 and a["天井"] == 22.7 and a["床"] == 22.7
+    wall = next(it for it in to_takeoff_items([r]) if it.location.endswith("壁"))
+    assert wall.confidence == 0.95   # 実測壁面積あり → 高信頼
+
+
+def test_tolerant_japanese_keys():
+    rooms = rooms_from_dicts([{"室名": "和室", "幅": 3.6, "奥行": 2.7, "天井高": 2.4, "外壁長": 6.3}])
+    assert rooms[0].name == "和室" and rooms[0].exterior_wall_len_m == 6.3
+
+
+def test_csv_import(tmp_path):
+    p = tmp_path / "rooms.csv"
+    p.write_text(
+        "name,floor_area_m2,wall_area_m2,material,thickness_mm,surfaces\n"
+        "LDK,22.7,40,断熱材(グラスウール),105,壁;天井;床\n",
+        encoding="utf-8",
+    )
+    rooms = load_rooms_csv(p)
+    assert rooms[0].name == "LDK" and rooms[0].floor_area_m2 == 22.7
+    items = to_takeoff_items(rooms)
+    assert len(items) == 3 and all(it.unit == "m2" for it in items)

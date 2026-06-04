@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,4 +221,34 @@ async def emergency(symptom: str = Form(...)):
             for c in cands
         ],
         "markdown": build_quote_card(symptom, cands),
+    }
+
+
+@app.post("/insulation")
+async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
+    """部屋寸法/面積（LiDAR・手測り）→ 断熱面積(壁/天井/床 m²)の拾い出し＋見積。
+
+    rooms 例: [{"name":"LDK","width_m":5.4,"depth_m":4.2,"height_m":2.5,
+                "exterior_wall_len_m":12,"openings_m2":8,
+                "material":"断熱材(グラスウール)","thickness_mm":105}]
+    LiDAR が面積を直接出す場合は floor_area_m2 / wall_area_m2 でも可。
+    """
+    from gopipe_takeoff.classifier import classify
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.estimate import build_estimate
+    from gopipe_takeoff.insulation_area import rooms_from_dicts, to_takeoff_items
+    from gopipe_takeoff.pricer import Pricer
+
+    items = classify(
+        to_takeoff_items(rooms_from_dicts(rooms)),
+        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+    )
+    est = build_estimate(
+        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+    )
+    return {
+        "count": len(items),
+        "items": _items_json(items),
+        "subtotal": est.subtotal,
+        "total": est.total,
     }
