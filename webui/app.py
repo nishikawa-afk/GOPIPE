@@ -146,6 +146,89 @@ with st.expander("📏 現地実測（ダクト/配管/台数・LiDAR/巻尺・P
         else:
             st.warning("算出できませんでした。種別（角ダクト/丸ダクト/配管/個数/台数）と寸法・個数を入れてください。")
 
+# ----------------------------- 立管・延長計算（系統図×階高・PDF不要） -----------------------------
+with st.expander("🧮 立管・延長計算（系統図×階高・PDF不要）"):
+    st.caption(
+        "平面図に長さが出ない立管を 階高×階数×本数 で延長(m)化。"
+        "横引き・継手・弁は階数比例で積算。系統ごとに1行で入力してください。"
+    )
+    _r0 = pd.DataFrame([
+        {"系統名": "給水立管 PS-1", "階数": 5, "階高m": 3.2, "本数": 2, "口径/仕様": "VLP DN20",
+         "材種": "給水管", "横引きm/階": 3.0, "継手/階": 2, "弁/階": 1},
+        {"系統名": "排水立管 PS-2", "階数": 5, "階高m": 3.2, "本数": 1, "口径/仕様": "VP100",
+         "材種": "排水管", "横引きm/階": 2.0, "継手/階": 2, "弁/階": 0},
+    ])
+    _re = st.data_editor(_r0, num_rows="dynamic", use_container_width=True, key="riser_rows")
+    if st.button("立管から算出", key="riser_run", type="primary"):
+        from gopipe_takeoff.classifier import classify
+        from gopipe_takeoff.dictionary import TakeoffDictionary
+        from gopipe_takeoff.estimate import build_estimate
+        from gopipe_takeoff.pricer import Pricer
+        from gopipe_takeoff.riser_estimate import risers_from_dicts, to_takeoff_items
+
+        _rc = _re.astype(object).where(pd.notna(_re), None)
+        _rs = [
+            {"name": r.get("系統名"), "floors": r.get("階数"), "floor_height_m": r.get("階高m"),
+             "count": r.get("本数"), "spec": r.get("口径/仕様"), "material": r.get("材種"),
+             "branch_per_floor_m": r.get("横引きm/階"), "fittings_per_floor": r.get("継手/階"),
+             "valves_per_floor": r.get("弁/階")}
+            for _, r in _rc.iterrows()
+        ]
+        _ri = classify(
+            to_takeoff_items(risers_from_dicts(_rs)),
+            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        )
+        if _ri:
+            st.dataframe(
+                pd.DataFrame([
+                    {"カテゴリ": it.category, "名称": it.name, "仕様": it.spec, "場所": it.location,
+                     "数量": it.quantity, "単位": it.unit, "信頼度": round(it.confidence, 2)}
+                    for it in _ri
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            _e = build_estimate(_ri, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            st.metric("立管(延長計算) 見積（税込）", f"¥{_e.total:,}")
+        else:
+            st.warning("算出できませんでした。各系統に『階数』と『階高m』を入れてください。")
+
+# ----------------------------- 凡例ドリブン記号カウント（ベクターPDF・テキスト層） -----------------------------
+with st.expander("🔣 凡例ドリブン記号カウント（ベクターPDF・テキスト層）"):
+    st.caption(
+        "凡例(記号→名称)を解析し、図面テキスト層の各記号の出現数を機械カウント→個数モノの拾い出し。"
+        "CAD出力のベクターPDF向け（スキャン画像は0件になり得ます）。"
+    )
+    _lc_pdf = st.file_uploader("ベクターPDF（テキスト層あり）", type=["pdf"], key="lc_pdf")
+    if st.button("凡例から記号カウント", key="lc_run", type="primary"):
+        if _lc_pdf is None:
+            st.warning("テキスト層のあるベクターPDFをアップロードしてください。")
+        else:
+            from gopipe_takeoff.classifier import classify
+            from gopipe_takeoff.dictionary import TakeoffDictionary
+            from gopipe_takeoff.estimate import build_estimate
+            from gopipe_takeoff.legend_count import count_from_pdf
+            from gopipe_takeoff.pricer import Pricer
+
+            _tmp = Path(tempfile.gettempdir()) / _lc_pdf.name
+            _tmp.write_bytes(_lc_pdf.getvalue())
+            _lc = classify(
+                count_from_pdf(str(_tmp)),
+                TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+            )
+            if _lc:
+                st.dataframe(
+                    pd.DataFrame([
+                        {"カテゴリ": it.category, "名称": it.name, "記号": it.spec, "場所": it.location,
+                         "数量": it.quantity, "単位": it.unit, "信頼度": round(it.confidence, 2)}
+                        for it in _lc
+                    ]),
+                    use_container_width=True, hide_index=True,
+                )
+                _e = build_estimate(_lc, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+                st.metric("記号カウント 見積（税込）", f"¥{_e.total:,}")
+            else:
+                st.info("凡例または記号が検出できませんでした。テキスト層のあるベクターPDFか確認してください。")
+
 # ----------------------------- 実行 -----------------------------
 if run:
     if uploaded is not None:

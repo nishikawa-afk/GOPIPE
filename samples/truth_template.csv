@@ -1,0 +1,5 @@
+name,spec,location,quantity,unit,category
+給水管,VLP DN20,1F 給水系統,28.5,m,給水
+仕切弁,GV DN20,1F PS,4,個,弁類
+大便器,TOTO CS232B,1F 便所,2,台,衛生器具
+全熱交換器,HEX-1,1F 各室,2,台,機器
