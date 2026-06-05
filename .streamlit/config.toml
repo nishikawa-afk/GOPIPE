@@ -1,9 +1,10 @@
-# GOPIPE 公開UI（Streamlit Community Cloud）テーマ。提案書のネイビー×オレンジに統一。
+# GOPIPE 公開UI テーマ — 「未来へPIPEを架ける」ダークSF×ネオン。
 [theme]
-primaryColor = "#E8833A"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F2F5F9"
-textColor = "#14304F"
+base = "dark"
+primaryColor = "#22D3EE"
+backgroundColor = "#0A1020"
+secondaryBackgroundColor = "#111A33"
+textColor = "#E6F0FF"
 font = "sans serif"
 
 [server]

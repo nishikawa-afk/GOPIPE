@@ -35,7 +35,70 @@ except Exception:
 
 OUT_DIR = ROOT / "out"
 
-st.set_page_config(page_title="GOPIPE", page_icon="🔧", layout="wide")
+st.set_page_config(page_title="GOPIPE — 未来へPIPEを架ける", page_icon="🔧", layout="wide")
+
+st.markdown(
+    """<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap');
+:root{--gp-bg:#0A1020;--gp-panel:#101a36;--gp-cyan:#22D3EE;--gp-blue:#3B82F6;--gp-orange:#F59E0B;--gp-text:#E6F0FF;--gp-dim:#8aa0c8;}
+.stApp{
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(34,211,238,.16), transparent 60%),
+    radial-gradient(1000px 520px at 95% 0%, rgba(245,147,58,.12), transparent 55%),
+    radial-gradient(900px 700px at 50% 120%, rgba(59,130,246,.18), transparent 60%),
+    linear-gradient(180deg,#0A1020 0%,#0b1228 50%,#0a0f1f 100%);
+  background-attachment:fixed; color:var(--gp-text);
+  font-family:'Zen Kaku Gothic New','Noto Sans JP',sans-serif;
+}
+.stApp:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;
+  background-image:linear-gradient(rgba(34,211,238,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.06) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(1200px 640px at 50% 0%,#000 28%,transparent 80%);
+  mask-image:radial-gradient(1200px 640px at 50% 0%,#000 28%,transparent 80%);
+  animation:gpGrid 26s linear infinite;}
+@keyframes gpGrid{from{background-position:0 0,0 0}to{background-position:46px 46px,46px 46px}}
+[data-testid="stHeader"]{background:transparent;}
+.block-container{position:relative;z-index:1;padding-top:2.2rem;}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,rgba(16,26,54,.94),rgba(10,16,32,.94));border-right:1px solid rgba(34,211,238,.22);backdrop-filter:blur(8px);}
+[data-testid="stSidebar"] *{color:var(--gp-text);}
+[data-testid="stMarkdownContainer"] h2{background:linear-gradient(90deg,#fff,#9be9ff 60%,var(--gp-cyan));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:900;}
+[data-testid="stMarkdownContainer"] h3{color:#bfe6ff;}
+.stButton>button{border-radius:12px;border:1px solid rgba(34,211,238,.45);background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(59,130,246,.16));color:var(--gp-text);font-weight:700;transition:.2s;}
+.stButton>button:hover{border-color:var(--gp-cyan);box-shadow:0 0 22px rgba(34,211,238,.45),inset 0 0 12px rgba(34,211,238,.15);transform:translateY(-1px);}
+.stButton>button[kind="primary"]{background:linear-gradient(135deg,var(--gp-orange),#ff7a1a);border:none;color:#1a1206;box-shadow:0 0 24px rgba(245,147,58,.5);}
+.stButton>button[kind="primary"]:hover{box-shadow:0 0 36px rgba(245,147,58,.85);}
+[data-testid="stExpander"]{border:1px solid rgba(34,211,238,.22);border-radius:14px;background:linear-gradient(180deg,rgba(17,26,51,.7),rgba(12,18,38,.6));backdrop-filter:blur(6px);overflow:hidden;margin-bottom:.55rem;box-shadow:0 8px 30px rgba(0,0,0,.35);transition:.2s;}
+[data-testid="stExpander"]:hover{border-color:rgba(34,211,238,.55);box-shadow:0 0 26px rgba(34,211,238,.18);}
+[data-testid="stExpander"] summary{font-weight:700;color:var(--gp-text);}
+[data-testid="stExpander"] summary:hover{color:var(--gp-cyan);}
+[data-testid="stFileUploaderDropzone"]{background:rgba(17,26,51,.6);border:1px dashed rgba(34,211,238,.4);}
+[data-baseweb="select"]>div{background:rgba(17,26,51,.85);border-color:rgba(34,211,238,.3);}
+[data-testid="stMetricValue"]{color:var(--gp-cyan);text-shadow:0 0 18px rgba(34,211,238,.45);font-weight:800;}
+[data-testid="stDataFrame"]{border:1px solid rgba(34,211,238,.18);border-radius:12px;}
+[data-testid="stAlert"]{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:12px;}
+[data-baseweb="tab-list"]{gap:6px;border-bottom:1px solid rgba(34,211,238,.15);}
+[aria-selected="true"][data-baseweb="tab"]{color:var(--gp-cyan);}
+[data-baseweb="tab-highlight"]{background:var(--gp-cyan)!important;box-shadow:0 0 12px var(--gp-cyan);}
+/* ---- HERO ---- */
+.gp-hero{position:relative;margin:.1rem 0 1.3rem;padding:26px 30px 14px;border-radius:20px;overflow:hidden;
+  background:radial-gradient(800px 320px at 82% -40%,rgba(245,147,58,.18),transparent 60%),radial-gradient(720px 340px at 8% 0%,rgba(34,211,238,.20),transparent 60%),linear-gradient(135deg,rgba(13,21,48,.96),rgba(9,14,31,.93));
+  border:1px solid rgba(34,211,238,.28);box-shadow:0 22px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.05);}
+.gp-kicker{font-family:'Orbitron',sans-serif;font-size:.7rem;letter-spacing:.4em;color:var(--gp-cyan);text-transform:uppercase;opacity:.85;margin-bottom:6px;}
+.gp-title{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(2.6rem,6.4vw,4.4rem);line-height:1;margin:0;letter-spacing:.04em;
+  background:linear-gradient(92deg,#eaffff 0%,#6fe9ff 36%,#3aa0ff 62%,#ffb259 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 26px rgba(34,211,238,.35));}
+.gp-sub{font-size:clamp(1.1rem,2.4vw,1.55rem);font-weight:900;margin:.55rem 0 .1rem;color:#fff;text-shadow:0 0 22px rgba(34,211,238,.35);}
+.gp-desc{color:var(--gp-dim);margin:.1rem 0 .2rem;font-size:.97rem;}
+.gp-pipe{width:100%;height:auto;display:block;margin-top:10px;}
+.gp-flow{stroke-dasharray:14 16;animation:gpFlow 1.5s linear infinite;}
+@keyframes gpFlow{to{stroke-dashoffset:-30;}}
+.gp-node{filter:drop-shadow(0 0 6px rgba(34,211,238,.7));}
+.gp-future{animation:gpPulse 2.2s ease-in-out infinite;transform-origin:center;}
+@keyframes gpPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(245,147,58,.55));}50%{filter:drop-shadow(0 0 22px rgba(245,147,58,1));}}
+.gp-label{font-family:'Zen Kaku Gothic New',sans-serif;font-size:13px;fill:#cfe3ff;}
+.gp-label.f{fill:#ffd9a8;font-weight:700;}
+</style>""",
+    unsafe_allow_html=True,
+)
 
 
 def _run_takeoff(pdf_path: Path, provider: str):
@@ -59,7 +122,40 @@ run = st.sidebar.button("▶ 拾い出し実行", type="primary", use_container_
 st.sidebar.markdown("---")
 st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫で動きます。")
 
-st.title("GOPIPE — 設備拾い出しから見積・申請・保全まで")
+st.markdown(
+    """
+<div class="gp-hero">
+  <div class="gp-kicker">PIPING · HVAC · INSULATION — AI TAKEOFF</div>
+  <div class="gp-title">GOPIPE</div>
+  <div class="gp-sub">未来へ、PIPEを架ける。</div>
+  <div class="gp-desc">拾い出し → 見積 → 申請 → 保全。設備積算を、AIで“いま”から“未来”へつなぐ。</div>
+  <svg class="gp-pipe" viewBox="0 0 1200 150" preserveAspectRatio="xMidYMid meet" role="img" aria-label="未来へ架かるパイプ">
+    <defs>
+      <linearGradient id="gpPg" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#22D3EE"/><stop offset="0.6" stop-color="#3B82F6"/><stop offset="1" stop-color="#F59E0B"/>
+      </linearGradient>
+      <filter id="gpGlow" x="-20%" y="-50%" width="140%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <path d="M30,112 C 300,112 360,46 600,46 S 900,40 1170,30" fill="none" stroke="rgba(34,211,238,.18)" stroke-width="14" stroke-linecap="round"/>
+    <path d="M30,112 C 300,112 360,46 600,46 S 900,40 1170,30" fill="none" stroke="url(#gpPg)" stroke-width="4" stroke-linecap="round" filter="url(#gpGlow)"/>
+    <path class="gp-flow" d="M30,112 C 300,112 360,46 600,46 S 900,40 1170,30" fill="none" stroke="#eafdff" stroke-width="2.4" stroke-linecap="round"/>
+    <g class="gp-node"><circle cx="30" cy="112" r="7" fill="#22D3EE"/></g>
+    <g class="gp-node"><circle cx="330" cy="82" r="6.5" fill="#39c6f0"/></g>
+    <g class="gp-node"><circle cx="600" cy="46" r="6.5" fill="#4aa6f2"/></g>
+    <g class="gp-node"><circle cx="900" cy="41" r="6.5" fill="#7f9ff4"/></g>
+    <g class="gp-future"><circle cx="1170" cy="30" r="9" fill="#F59E0B"/></g>
+    <text class="gp-label" x="22" y="135" text-anchor="start">設備図 / 実測</text>
+    <text class="gp-label" x="330" y="106" text-anchor="middle">AI 拾い出し</text>
+    <text class="gp-label" x="600" y="70" text-anchor="middle">見積 / 発注</text>
+    <text class="gp-label" x="900" y="65" text-anchor="middle">申請 / 保全</text>
+    <text class="gp-label f" x="1178" y="20" text-anchor="end">未来 →</text>
+  </svg>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ----------------------------- 断熱面積（実測/LiDAR・PDF不要） -----------------------------
 with st.expander("🧱 断熱面積を計算（実測 / LiDAR・PDF不要）"):
