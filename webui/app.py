@@ -344,6 +344,15 @@ if run:
         pdf_path = ROOT / "samples" / "dummy_設備図.pdf"
         if provider != "mock":
             st.warning("PDF が未選択です。mock 以外は設備図PDFをアップロードしてください。")
+    if uploaded is not None:
+        try:
+            from gopipe_takeoff.equipment_table import has_text_layer
+            if has_text_layer(str(pdf_path)):
+                st.success("✅ ベクターPDF（テキスト層あり）を検出 — 機器表テキスト抽出が効き、高精度が期待できます。")
+            else:
+                st.warning("⚠ スキャン画像PDF（テキスト層なし）の可能性 — 数量が読めない場合があります。可能ならCAD出力のベクターPDFを推奨します。")
+        except Exception:  # noqa: BLE001
+            pass
     with st.spinner("拾い出し中…"):
         try:
             result = _run_takeoff(pdf_path, provider)
@@ -365,23 +374,100 @@ if not items:
 
 st.success(f"{len(items)} 件を抽出・系統別に分類しました。")
 
+with st.expander("📦 成果物を一括ダウンロード（ZIP：拾い出し・見積・申請）"):
+    if st.button("ZIPを生成", key="zip_gen"):
+        import io
+        import zipfile
+
+        from gopipe_takeoff.application import ProjectInfo, build_application_markdown
+        from gopipe_takeoff.estimate import build_estimate as _zbe
+        from gopipe_takeoff.excel_writer import write_excel
+        from gopipe_takeoff.pricer import Pricer as _zpr
+
+        _tmpx = Path(tempfile.gettempdir()) / "gopipe_toridashi.xlsx"
+        write_excel(items, _tmpx)
+        _zest = _zbe(items, _zpr.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+        _zmd = build_application_markdown(items, ProjectInfo(municipality="東京都水道局"))
+        _zsum = f"GOPIPE 見積サマリ\n小計(税抜): ¥{_zest.subtotal:,}\n合計(税込): ¥{_zest.total:,}\n"
+        _zbuf = io.BytesIO()
+        with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _z:
+            _z.write(_tmpx, "拾い出し表.xlsx")
+            _z.writestr("見積サマリ.txt", _zsum)
+            _z.writestr("給水装置工事申込書.md", _zmd)
+        st.download_button(
+            "⬇ GOPIPE成果物.zip をダウンロード", _zbuf.getvalue(),
+            file_name="GOPIPE成果物.zip", mime="application/zip", key="zip_dl",
+        )
+        st.success("ZIPを生成しました。下のボタンで保存できます。")
+
 tab_take, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
     ["📋 拾い出し", "💰 見積 (F-12)", "📄 申請 (F-16)", "🛡 予防保全 (F-17)", "🚿 透明見積 (F-15)"]
 )
 
 # ----------------------------- 拾い出し -----------------------------
 with tab_take:
-    df = pd.DataFrame(
+    from gopipe_takeoff.estimate import build_estimate as _be
+    from gopipe_takeoff.models import TakeoffItem as _TI
+    from gopipe_takeoff.pricer import Pricer as _pr
+
+    _low = [it for it in items if it.confidence < 0.7]
+    _c1, _c2, _c3 = st.columns(3)
+    _c1.metric("抽出 件数", len(items))
+    _c2.metric("要確認 (信頼度<0.7)", len(_low))
+    _c3.metric("カテゴリ数", len({it.category for it in items}))
+    st.caption(
+        "AIの下書きです。数量・名称・仕様はその場で修正できます（⚠＝要確認）。"
+        "修正→『🔄 反映して再見積』→ 確定したら『✅ 学習に記録』で次回の精度に還元されます。"
+    )
+    _rev_src = pd.DataFrame(
         [
-            {
-                "カテゴリ": it.category, "名称": it.name, "仕様": it.spec,
-                "場所": it.location, "数量": it.quantity, "単位": it.unit,
-                "信頼度": round(it.confidence, 2),
-            }
-            for it in items
+            {"⚠": "⚠" if it.confidence < 0.7 else "", "カテゴリ": it.category or "",
+             "名称": it.name, "仕様": it.spec or "", "場所": it.location or "",
+             "数量": float(it.quantity), "単位": it.unit or "", "信頼度": round(it.confidence, 2)}
+            for it in sorted(items, key=lambda x: x.confidence)
         ]
     )
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    _edited = st.data_editor(
+        _rev_src, use_container_width=True, hide_index=True, num_rows="dynamic",
+        key="review_tbl", disabled=["⚠", "信頼度"],
+    )
+    _b1, _b2 = st.columns(2)
+    if _b1.button("🔄 反映して再見積", key="review_reest", use_container_width=True):
+        _e = _edited.astype(object).where(pd.notna(_edited), None)
+        _rev = [
+            _TI(page=1, name=str(r.get("名称") or "").strip(), spec=(r.get("仕様") or None),
+                quantity=float(r.get("数量") or 0), unit=str(r.get("単位") or ""),
+                location=(r.get("場所") or None), category=(r.get("カテゴリ") or None),
+                confidence=float(r.get("信頼度") or 1.0))
+            for _, r in _e.iterrows() if str(r.get("名称") or "").strip()
+        ]
+        st.session_state["items"] = [it.model_dump() for it in _rev]
+        _est = _be(_rev, _pr.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+        st.metric("修正後 見積（税込）", f"¥{_est.total:,}")
+        st.success(f"{len(_rev)} 件で再計算しました。各タブにも反映されます。")
+    if _b2.button("✅ 学習に記録（確定）", key="review_learn", use_container_width=True):
+        from gopipe_takeoff.feedback import record_correction
+        _e = _edited.astype(object).where(pd.notna(_edited), None)
+        _orig = {it.name: it for it in items}
+        _ts = datetime.date.today().isoformat()
+        _n = 0
+        for _, r in _e.iterrows():
+            _nm = str(r.get("名称") or "").strip()
+            if not _nm:
+                continue
+            _o = _orig.get(_nm)
+            _bef = ({"name": _o.name, "spec": _o.spec, "quantity": _o.quantity,
+                     "unit": _o.unit, "location": _o.location, "category": _o.category} if _o else {})
+            _aft = {"name": _nm, "spec": (r.get("仕様") or None), "quantity": float(r.get("数量") or 0),
+                    "unit": (r.get("単位") or None), "location": (r.get("場所") or None),
+                    "category": (r.get("カテゴリ") or None)}
+            try:
+                record_correction(project="webui", before=_bef, after=_aft, ts=_ts)
+                _n += 1
+            except Exception:  # noqa: BLE001
+                pass
+        st.success(f"{_n} 件を学習データに記録しました（修正・確定サンプル → 次回の精度向上に活用）。")
+        st.caption("※ Streamlit Cloud では当面セッション/一時保存。恒久保存は Supabase 連携で対応予定。")
 
 # ----------------------------- 見積 (F-12) -----------------------------
 with tab_est:
