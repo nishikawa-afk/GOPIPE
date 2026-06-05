@@ -20,6 +20,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+try:  # opencv は任意。あれば高速・大判図面対応、無ければ numpy フォールバック。
+    import cv2  # type: ignore
+except Exception:  # noqa: BLE001
+    cv2 = None
+
 
 @dataclass
 class Match:
@@ -45,6 +50,9 @@ def ncc_map(image, template) -> np.ndarray:
     th, tw = tpl.shape
     if img.shape[0] < th or img.shape[1] < tw:
         return np.empty((0, 0))
+    if cv2 is not None:  # 大判図面でもメモリ安全・高速（TM_CCOEFF_NORMED = NCC 相当）
+        res = cv2.matchTemplate(img.astype(np.float32), tpl.astype(np.float32), cv2.TM_CCOEFF_NORMED)
+        return np.nan_to_num(res.astype(np.float64), nan=0.0)
     windows = np.lib.stride_tricks.sliding_window_view(img, (th, tw))
     w0 = windows - windows.mean(axis=(2, 3), keepdims=True)
     t0 = tpl - tpl.mean()

@@ -101,11 +101,11 @@ st.markdown(
 )
 
 
-def _run_takeoff(pdf_path: Path, provider: str):
+def _run_takeoff(pdf_path: Path, provider: str, *, grid: int = 1, two_pass: bool = False):
     os.environ["GOPIPE_LLM_PROVIDER"] = provider
     from gopipe_takeoff import run_takeoff
 
-    return run_takeoff(str(pdf_path), str(OUT_DIR))
+    return run_takeoff(str(pdf_path), str(OUT_DIR), grid=grid, two_pass=two_pass)
 
 
 # ----------------------------- サイドバー -----------------------------
@@ -118,6 +118,15 @@ provider = st.sidebar.selectbox(
     help="mock=APIキー不要のサンプル。claude=実図面の本番抽出（要 ANTHROPIC_API_KEY）",
 )
 uploaded = st.sidebar.file_uploader("設備図PDF", type=["pdf"])
+with st.sidebar.expander("⚙ 高精度モード（スキャン図向け）"):
+    _grid = st.select_slider(
+        "タイル分割（細かいほど高精度・低速）", options=[1, 2, 3], value=1,
+        help="図面を grid×grid に分割してAIに渡し、小さな数量も読みやすくします（API回数 grid² 倍）。",
+    )
+    _two_pass = st.checkbox(
+        "多パス（漏れ確認）", value=False,
+        help="抽出後にもう一度『漏れがないか』をAIに確認させます（API +1回/ページ）。",
+    )
 run = st.sidebar.button("▶ 拾い出し実行", type="primary", use_container_width=True)
 st.sidebar.markdown("---")
 st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫で動きます。")
@@ -355,7 +364,7 @@ if run:
             pass
     with st.spinner("拾い出し中…"):
         try:
-            result = _run_takeoff(pdf_path, provider)
+            result = _run_takeoff(pdf_path, provider, grid=_grid, two_pass=_two_pass)
             st.session_state["items"] = [it.model_dump() for it in result.items]
         except Exception as e:  # noqa: BLE001
             st.error(f"拾い出しでエラー: {e}")
