@@ -383,6 +383,13 @@ if run:
             except Exception:  # noqa: BLE001
                 pass
             st.session_state["items"] = [it.model_dump() for it in _items]
+            try:  # 図面プレビュー用にAIマーカーPDFを退避
+                _mp = result.marker_pdf_path
+                st.session_state["marker_pdf"] = (
+                    Path(_mp).read_bytes() if _mp and Path(_mp).exists() else None
+                )
+            except Exception:  # noqa: BLE001
+                st.session_state["marker_pdf"] = None
         except Exception as e:  # noqa: BLE001
             st.error(f"拾い出しでエラー: {e}")
 
@@ -426,8 +433,9 @@ with st.expander("📦 成果物を一括ダウンロード（ZIP：拾い出し
         )
         st.success("ZIPを生成しました。下のボタンで保存できます。")
 
-tab_take, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
-    ["📋 拾い出し", "💰 見積 (F-12)", "📄 申請 (F-16)", "🛡 予防保全 (F-17)", "🚿 透明見積 (F-15)"]
+tab_take, tab_view, tab_bench, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
+    ["📋 拾い出し", "📐 図面プレビュー", "📊 精度", "💰 見積 (F-12)",
+     "📄 申請 (F-16)", "🛡 予防保全 (F-17)", "🚿 透明見積 (F-15)"]
 )
 
 # ----------------------------- 拾い出し -----------------------------
@@ -503,6 +511,58 @@ with tab_take:
         st.success(f"{_n} 件を記録・うち {_learned} 件を『学習の堀』に反映（次回、同じ表記を自動で正しく分類）。")
         if _learned:
             st.balloons()
+
+# ----------------------------- 図面プレビュー（AIマーカー） -----------------------------
+with tab_view:
+    _mp = st.session_state.get("marker_pdf")
+    if not _mp:
+        st.info(
+            "実図面PDFをアップロードして（高精度モードのタイル分割なし＝grid=1で）拾い出すと、"
+            "AIが検出した部材をカテゴリ色で重ねた『AIマーカー図』が表示されます。"
+            "mock・タイル分割時は座標が無いため表示されません。"
+        )
+    else:
+        import fitz as _fitz
+
+        st.caption("AIが検出した部材をカテゴリ色で図面に重ねた『AIマーカー図』です（給水=青/弁類=赤/機器=紫…）。")
+        _doc = _fitz.open(stream=_mp, filetype="pdf")
+        for _pno in range(min(_doc.page_count, 5)):
+            _png = _doc[_pno].get_pixmap(dpi=110).tobytes("png")
+            st.image(_png, caption=f"ページ {_pno + 1}")
+        _doc.close()
+        st.download_button(
+            "⬇ AIマーカー図(PDF)をダウンロード", _mp,
+            file_name="AIマーカー図.pdf", mime="application/pdf", key="marker_dl",
+        )
+
+# ----------------------------- 精度ダッシュボード -----------------------------
+with tab_bench:
+    st.caption(
+        "人手の正解CSV（列: name,spec,location,quantity,unit,category）をアップロードすると、"
+        "現在の拾い出しとの一致率を測定します。雛形は samples/truth_template.csv。"
+    )
+    _tf = st.file_uploader("正解CSV をアップロード", type=["csv"], key="bench_truth")
+    if _tf is not None:
+        import csv as _csv
+        import io as _io
+
+        from gopipe_takeoff.benchmark import benchmark as _bench
+        try:
+            _truth = list(_csv.DictReader(_io.StringIO(_tf.getvalue().decode("utf-8-sig"))))
+            _ai = [
+                {"category": it.category, "name": it.name, "spec": it.spec,
+                 "location": it.location, "quantity": it.quantity, "unit": it.unit}
+                for it in items
+            ]
+            _br = _bench(_ai, _truth)
+            _bc1, _bc2 = st.columns(2)
+            _bc1.metric("適合率 precision", f"{_br.precision * 100:.0f}%")
+            _bc2.metric("再現率 recall", f"{_br.recall * 100:.0f}%")
+            st.code(_br.format(), language="text")
+        except Exception as _ex:  # noqa: BLE001
+            st.error(f"ベンチマークに失敗: {_ex}")
+    else:
+        st.info(f"正解CSVを入れると、現在の拾い出し（{len(items)} 件）との精度を数値化します。")
 
 # ----------------------------- 見積 (F-12) -----------------------------
 with tab_est:
