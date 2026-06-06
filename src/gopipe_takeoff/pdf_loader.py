@@ -17,6 +17,28 @@ MIN_DPI = 72
 DEFAULT_TILE_DPI = 300
 
 
+def _enhance_png(data: bytes) -> bytes:
+    """スキャン画像向けの軽い前処理（自動コントラスト＋鮮鋭化）。
+
+    小さな数字・記号をAIが読みやすくする。失敗時や非対応環境では原画像を返す
+    （PIL のみ・依存追加なし）。ベクター描画には適用しない（呼び出し側で判定）。
+    """
+    try:
+        import io
+
+        from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+        im = Image.open(io.BytesIO(data)).convert("RGB")
+        im = ImageOps.autocontrast(im, cutoff=1)
+        im = ImageEnhance.Contrast(im).enhance(1.3)
+        im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=130, threshold=2))
+        out = io.BytesIO()
+        im.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:  # noqa: BLE001
+        return data
+
+
 def _render_pixmap_within_limit(
     page, *, dpi: int, clip=None
 ) -> tuple[bytes, int, int, int]:
@@ -51,7 +73,7 @@ def _render_pixmap_within_limit(
     return last_data or b"", last_w, last_h, cur_dpi
 
 
-def _render_tiles(page, *, grid: int, dpi: int) -> list[Tile]:
+def _render_tiles(page, *, grid: int, dpi: int, enhance: bool = False) -> list[Tile]:
     """ページを N×N グリッドに切り、各タイルを個別レンダリングする。"""
     import fitz  # PyMuPDF
 
@@ -63,6 +85,10 @@ def _render_tiles(page, *, grid: int, dpi: int) -> list[Tile]:
         for col in range(grid):
             clip = fitz.Rect(col * tw, row * th, (col + 1) * tw, (row + 1) * th)
             data, w, h, used_dpi = _render_pixmap_within_limit(page, dpi=dpi, clip=clip)
+            if enhance:
+                _e = _enhance_png(data)
+                if len(_e) <= MAX_IMAGE_BYTES:
+                    data = _e
             logger.info(
                 "page %d tile (r=%d, c=%d) rendered at %d dpi (%dx%d px, %.1f KB)",
                 page.number + 1, row, col, used_dpi, w, h, len(data) / 1024,
@@ -103,18 +129,20 @@ def load_pdf(
             data, w, h, used_dpi = _render_pixmap_within_limit(page, dpi=dpi)
             if used_dpi != dpi:
                 logger.info("page %d rendered at %d dpi (downscaled from %d)", i, used_dpi, dpi)
+            text = page.get_text("text") or ""
+            is_scan = len(text.strip()) < 50  # テキスト層が薄い=スキャン画像とみなす
+            if is_scan:
+                _enh = _enhance_png(data)
+                if len(_enh) <= MAX_IMAGE_BYTES:
+                    data = _enh
+                    logger.info("page %d: scan detected → image enhanced (contrast+sharpen)", i)
             tiles: list[Tile] = []
             if grid > 1:
                 logger.info("page %d: rendering %dx%d tiles at %d dpi", i, grid, grid, tile_dpi)
-                tiles = _render_tiles(page, grid=grid, dpi=tile_dpi)
+                tiles = _render_tiles(page, grid=grid, dpi=tile_dpi, enhance=is_scan)
             pages.append(
                 DrawingPage(
-                    page=i,
-                    width=w,
-                    height=h,
-                    text=page.get_text("text") or "",
-                    image_png=data,
-                    tiles=tiles,
+                    page=i, width=w, height=h, text=text, image_png=data, tiles=tiles,
                 )
             )
         doc.close()

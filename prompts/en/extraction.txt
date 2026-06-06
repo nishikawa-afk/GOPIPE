@@ -67,3 +67,13 @@ Output the JSON array ONLY. Not a single extra character. No code fences.
 - **Equipment schedule**: capacity, count, model for chillers / AHUs / pumps / fans.
 - **Ancillary**: insulation (incl. outdoor jacketing), sleeves / core drilling, tests (hydrostatic / leak / flushing), fire protection.
 - **Tag codes** (e.g. P-1, FCU-2, EF-3, RTU-1): also read from the text layer and reconcile with the equipment schedule.
+
+## Example (few-shot: consolidate exactly like this | most important)
+Input (excerpt): 3 gate valves GV DN20 in "L1 Shaft" and 2 more GV DN20 nearby. Chilled water CHW DN50 pipe in two runs of 12 m and 16.5 m. Also CHW DN32 of 8 m.
+Correct output:
+[
+  {"page":1,"name":"Gate Valve","spec":"DN20","quantity":5,"unit":"ea","location":"L1 Shaft","confidence":0.9},
+  {"page":1,"name":"Chilled Water Pipe","spec":"DN50","quantity":28.5,"unit":"m","location":"L1 CHW","confidence":0.8},
+  {"page":1,"name":"Chilled Water Pipe","spec":"DN32","quantity":8,"unit":"m","location":"L1 CHW","confidence":0.8}
+]
+Note: **same name×spec×location → ONE row** (count summed to 5; length 12+16.5=28.5). **Different size (DN50/DN32) = separate rows**. Never split per-instance or per-segment.

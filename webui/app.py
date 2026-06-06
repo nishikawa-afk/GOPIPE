@@ -473,30 +473,33 @@ tab_take, tab_view, tab_bench, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
 
 # ----------------------------- 拾い出し -----------------------------
 with tab_take:
+    from gopipe_takeoff import validate_items as _vchk
     from gopipe_takeoff.estimate import build_estimate as _be
     from gopipe_takeoff.models import TakeoffItem as _TI
     from gopipe_takeoff.pricer import Pricer as _pr
 
     _low = [it for it in items if it.confidence < 0.7]
+    _flags = _vchk.check(items)
     _c1, _c2, _c3 = st.columns(3)
     _c1.metric("抽出 件数", len(items))
     _c2.metric("要確認 (信頼度<0.7)", len(_low))
-    _c3.metric("カテゴリ数", len({it.category for it in items}))
+    _c3.metric("整合チェック フラグ", len(_flags))
     st.caption(
         "AIの下書きです。数量・名称・仕様はその場で修正できます（⚠＝要確認）。"
         "修正→『🔄 反映して再見積』→ 確定したら『✅ 学習に記録』で次回の精度に還元されます。"
     )
     _rev_src = pd.DataFrame(
         [
-            {"⚠": "⚠" if it.confidence < 0.7 else "", "カテゴリ": it.category or "",
-             "名称": it.name, "仕様": it.spec or "", "場所": it.location or "",
-             "数量": float(it.quantity), "単位": it.unit or "", "信頼度": round(it.confidence, 2)}
+            {"⚠": "⚠" if (it.confidence < 0.7 or _vchk.check_item(it)) else "",
+             "カテゴリ": it.category or "", "名称": it.name, "仕様": it.spec or "",
+             "場所": it.location or "", "数量": float(it.quantity), "単位": it.unit or "",
+             "信頼度": round(it.confidence, 2), "チェック": " / ".join(_vchk.check_item(it))}
             for it in sorted(items, key=lambda x: x.confidence)
         ]
     )
     _edited = st.data_editor(
         _rev_src, use_container_width=True, hide_index=True, num_rows="dynamic",
-        key="review_tbl", disabled=["⚠", "信頼度"],
+        key="review_tbl", disabled=["⚠", "信頼度", "チェック"],
     )
     _b1, _b2 = st.columns(2)
     if _b1.button("🔄 反映して再見積", key="review_reest", use_container_width=True):

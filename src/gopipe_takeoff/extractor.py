@@ -32,6 +32,40 @@ def _load_prompt(path: Path) -> str:
     return ""
 
 
+def _format_learned_hint(aliases: dict, *, en: bool = False, limit: int = 25) -> str:
+    """学習の堀（過去の修正）を抽出プロンプトに差し込む few-shot ヒント文。"""
+    lines: list[str] = []
+    for raw, info in list((aliases or {}).items())[:limit]:
+        info = info or {}
+        canon = (info.get("canonical") or "").strip()
+        if not canon:
+            continue
+        disp = info.get("raw", raw)
+        cat = info.get("category")
+        if en:
+            tag = f" ({cat})" if cat else ""
+            lines.append(f'- if the drawing shows "{disp}", treat it as "{canon}"{tag}')
+        else:
+            tag = f"（{cat}）" if cat else ""
+            lines.append(f'- 図面に "{disp}" とあれば名称「{canon}」{tag} として扱う')
+    if not lines:
+        return ""
+    header = ("\n\n## Confirmed normalizations for this org (from past corrections — always follow)\n"
+              if en else
+              "\n\n## この組織で確定済みの正規化（過去の修正＝必ず従う）\n")
+    return header + "\n".join(lines)
+
+
+def _learned_hint() -> str:
+    """現在ロケールの学習別名から few-shot ヒントを生成（無ければ空）。"""
+    try:
+        from .learned import load_aliases
+        from .locale import current_locale
+        return _format_learned_hint(load_aliases(), en=(current_locale() == "en"))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _strip_code_fence(text: str) -> str:
     m = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     return m.group(1) if m else text
@@ -296,7 +330,7 @@ def extract(
     抽出し、vision 結果と突合する（数量・型番を機器表優先で採用、拾い漏れを補完）。
     """
     client = client or get_llm_client()
-    system_prompt = _load_prompt(resolve_knowledge("extraction.txt"))
+    system_prompt = _load_prompt(resolve_knowledge("extraction.txt")) + _learned_hint()
     verify_prompt  = _load_prompt(resolve_knowledge("verification.txt")) if two_pass else ""
     all_items: list[TakeoffItem] = []
 

@@ -50,6 +50,16 @@ def test_locale_isolation(tmp_path):
     assert "全熱交ユニット" in ja and "全熱交ユニット" not in en
 
 
+def test_learned_hint_few_shot_formatting():
+    from gopipe_takeoff.extractor import _format_learned_hint
+    ja = _format_learned_hint({"ぜんねつ": {"canonical": "全熱交換器", "category": "機器", "raw": "ぜんねつ"}})
+    assert "全熱交換器" in ja and "ぜんねつ" in ja
+    en = _format_learned_hint(
+        {"ahu": {"canonical": "Air Handling Unit", "category": "Equipment", "raw": "ahu"}}, en=True)
+    assert "Air Handling Unit" in en and "treat it as" in en
+    assert _format_learned_hint({}) == ""
+
+
 def test_load_aliases_remote_safe_when_supabase_off(tmp_path):
     # Supabase 未設定でも remote=True で落ちず、ローカルJSONを返す
     p = tmp_path / "l.json"

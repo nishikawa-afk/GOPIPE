@@ -1,0 +1,62 @@
+"""ルールベース整合チェック — 拾い出し項目の怪しい行を機械的にフラグ（精度・信頼性）。
+
+AI/分類の誤りを純ルールで検出してレビューを助ける（即時・無料）。
+数量0 / 単位×カテゴリ不一致 / 外れ値 / 重複の疑い を各行の issue リストで返す。
+"""
+from __future__ import annotations
+
+from .models import TakeoffItem
+
+# 系統別配管（長さ m 想定）
+_LEN_CATS = {"給水", "給湯", "排水", "通気", "消火", "ガス", "冷媒", "冷温水", "ドレン", "Piping"}
+# 個数・台数で数えるもの
+_COUNT_CATS = {"弁類", "継手", "計装", "衛生器具", "機器", "Valve", "Equipment", "HVAC"}
+# 面積/長さ（ダクト・保温・断熱）
+_AREA_CATS = {"ダクト", "保温", "断熱材", "気密防湿", "Duct", "Insulation"}
+
+_COUNT_UNITS = {"個", "台", "ea", "本", "箇所", "枚", "面"}
+_LEN_UNITS = {"m", "ft", "lf"}
+_AREA_UNITS = {"m2", "ft2"}
+_OUTLIER = 100000.0
+
+
+def check_item(it: TakeoffItem) -> list[str]:
+    """1項目の整合 issue リスト（無ければ空）。"""
+    issues: list[str] = []
+    cat = (it.category or "").strip()
+    unit = (it.unit or "").strip()
+    q = it.quantity or 0
+    if q == 0:
+        issues.append("数量0（未取得）")
+    if it.spec and q == 0:
+        issues.append("spec有り・数量0")
+    if q < 0:
+        issues.append("数量がマイナス")
+    if q > _OUTLIER:
+        issues.append("数量が異常に大きい")
+    if cat in _LEN_CATS and unit and unit not in _LEN_UNITS:
+        issues.append(f"配管系なのに単位が「{unit}」（m想定）")
+    elif cat in _AREA_CATS and unit and unit not in (_AREA_UNITS | _LEN_UNITS):
+        issues.append(f"面積/長さ系なのに単位が「{unit}」")
+    elif cat in _COUNT_CATS and unit and unit not in _COUNT_UNITS:
+        issues.append(f"個数系なのに単位が「{unit}」")
+    if not cat or cat == "その他":
+        issues.append("未分類（その他）")
+    return issues
+
+
+def check(items: list[TakeoffItem]) -> dict[int, list[str]]:
+    """各 index → issue リスト（issue のある行のみ）。重複の疑いも検出。"""
+    out: dict[int, list[str]] = {}
+    seen: dict[tuple, int] = {}
+    for i, it in enumerate(items):
+        issues = check_item(it)
+        key = ((it.name or "").strip(), (it.spec or "").strip(), (it.location or "").strip())
+        if any(key):
+            if key in seen:
+                issues.append(f"重複の疑い（行{seen[key] + 1}と同一）")
+            else:
+                seen[key] = i
+        if issues:
+            out[i] = issues
+    return out
