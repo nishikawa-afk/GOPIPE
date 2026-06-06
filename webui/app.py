@@ -27,7 +27,7 @@ for _p in (ROOT / "src", ROOT / "shared"):
 # Streamlit Community Cloud: Secrets を環境変数へ橋渡し（claude/openai プロバイダ用）。
 # 未設定でも mock と各計算機能（断熱/実測/立管/凡例）は動作する。
 try:
-    for _k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+    for _k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
         if _k in st.secrets and not os.environ.get(_k):
             os.environ[_k] = str(st.secrets[_k])
 except Exception:

@@ -18,16 +18,28 @@ def _norm(s: str | None) -> str:
     return unicodedata.normalize("NFKC", (s or "").strip()).replace(" ", "").replace("　", "")
 
 
-def load_aliases(path: str | Path = DEFAULT_PATH) -> dict:
-    """学習済み別名 {normalized_raw: {canonical, category, unit, raw}} を読む。"""
+def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default", remote: bool = True) -> dict:
+    """学習済み別名を返す。ローカルJSON ＋（Supabase有効なら）リモートをマージ。
+
+    Supabase 値で上書き（恒久・顧客横断の永続が真の堀）。未設定でもローカルで機能。
+    """
+    data: dict = {}
     p = Path(path)
-    if not p.exists():
-        return {}
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except Exception:  # noqa: BLE001
-        return {}
+    if p.exists():
+        try:
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:  # noqa: BLE001
+            data = {}
+    if remote:
+        try:
+            from . import store
+            if store.is_enabled():
+                data = {**data, **store.load_learned_aliases(org)}
+        except Exception:  # noqa: BLE001
+            pass
+    return data
 
 
 def record_alias(

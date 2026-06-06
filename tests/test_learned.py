@@ -39,6 +39,14 @@ def test_learned_alias_improves_classification():
     assert after[0].category != "その他"
 
 
+def test_load_aliases_remote_safe_when_supabase_off(tmp_path):
+    # Supabase 未設定でも remote=True で落ちず、ローカルJSONを返す
+    p = tmp_path / "l.json"
+    record_alias("生表記X", "給水管", category="給水", unit="m", path=p)
+    a = load_aliases(p, remote=True)
+    assert "生表記X" in a and a["生表記X"]["canonical"] == "給水管"
+
+
 def test_add_learned_creates_entry_for_unknown_canonical():
     d = TakeoffDictionary.from_yaml(DICT)
     d.add_learned({"謎部材A": {"canonical": "特注金物", "category": "雑材", "unit": "個", "raw": "謎部材A"}})

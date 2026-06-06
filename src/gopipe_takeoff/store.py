@@ -107,3 +107,35 @@ def persist_takeoff(
     project_id = upsert_project(org_id, project_slug, title, len(items))
     n = replace_takeoff_items(project_id, org_id, items)
     return {"org_id": org_id, "project_id": project_id, "items": n}
+
+
+def record_learned_alias(
+    org_slug: str, raw: str, canonical: str,
+    category: str | None = None, unit: str | None = None,
+) -> bool:
+    """learned_aliases を (org_id, raw) で upsert（service_role 書込・学習の堀の永続化）。"""
+    org_id = ensure_org(org_slug, org_slug)
+    _req(
+        "POST", "learned_aliases",
+        body=[{"org_id": org_id, "raw": raw, "canonical": canonical,
+               "category": category, "unit": unit}],
+        prefer="resolution=merge-duplicates,return=minimal",
+        params="?on_conflict=org_id,raw",
+    )
+    return True
+
+
+def load_learned_aliases(org_slug: str) -> dict:
+    """org の learned_aliases を {raw: {canonical, category, unit, raw}} で返す。"""
+    org_id = ensure_org(org_slug, org_slug)
+    rows = _req(
+        "GET", "learned_aliases",
+        params=f"?org_id=eq.{org_id}&select=raw,canonical,category,unit",
+    )
+    out: dict = {}
+    for r in (rows or []):
+        out[r["raw"]] = {
+            "canonical": r.get("canonical"), "category": r.get("category"),
+            "unit": r.get("unit"), "raw": r.get("raw"),
+        }
+    return out
