@@ -652,11 +652,12 @@ with tab_est:
         from gopipe_takeoff.estimate_pdf import build_estimate_pdf
 
         _today = datetime.date.today()
+        _issue = (f"{_today:%B} {_today.day}, {_today.year}" if _loc == "en"
+                  else f"{_today.year}年{_today.month}月{_today.day}日")
         _pdfp = build_estimate_pdf(
-            est, OUT_DIR / "御見積書.pdf",
+            est, OUT_DIR / ("Quotation.pdf" if _loc == "en" else "御見積書.pdf"),
             client=_cli, vendor=_ven, subject=_subj,
-            issue_date=f"{_today.year}年{_today.month}月{_today.day}日",
-            tax_label=_m["tax_label"],
+            issue_date=_issue, tax_label=_m["tax_label"], locale=_loc,
         )
         st.download_button(
             "⬇ 御見積書.pdf をダウンロード", _pdfp.read_bytes(),

@@ -46,6 +46,34 @@ def _money(n: float, symbol: str = "¥") -> str:
     return f"{symbol}{int(round(n)):,}"
 
 
+_LABELS = {
+    "ja": {
+        "title": "御 見 積 書", "doc_title": "御見積書",
+        "to": (lambda c: f"<b>{c or '　'} 御中</b>"),
+        "subject": "件名：", "intro": "下記のとおり御見積申し上げます。",
+        "date": "発行日：", "date_ph": "　　　年　　月　　日", "reg": "登録番号 T________________",
+        "total_box": "お見積金額（税込）",
+        "headers": ["No", "カテゴリ", "名称", "仕様", "数量", "単位", "単価", "金額"],
+        "material": "材料費 計", "labor": "労務費 計", "manhours": "（総人工）", "manday_unit": "人工",
+        "subtotal": "小計", "site_oh": "現場管理費", "general_oh": "一般管理費", "total": "合計（税込）",
+        "footer": "・本見積の有効期限は発行日より30日間です。・数量はAI拾い出し＋人確認に基づく概算で、"
+                  "最終確認のうえ確定します。・記載の単価・歩掛は社内標準であり、現場条件により調整します。",
+    },
+    "en": {
+        "title": "Q U O T A T I O N", "doc_title": "Quotation",
+        "to": (lambda c: f"<b>To: {c or '—'}</b>"),
+        "subject": "Project: ", "intro": "We are pleased to submit the following quotation.",
+        "date": "Date: ", "date_ph": "____________", "reg": "Reg. No. ________________",
+        "total_box": "Quoted Amount (incl. tax)",
+        "headers": ["No", "Category", "Item", "Spec", "Qty", "Unit", "Unit Price", "Amount"],
+        "material": "Material", "labor": "Labor", "manhours": "(Man-days)", "manday_unit": "man-days",
+        "subtotal": "Subtotal", "site_oh": "Site Mgmt.", "general_oh": "General Admin.", "total": "Total (incl. tax)",
+        "footer": "・Valid for 30 days from the date of issue. ・Quantities are AI-assisted estimates "
+                  "pending final review. ・Unit prices and labor factors are internal standards, subject to site conditions.",
+    },
+}
+
+
 def build_estimate_pdf(
     estimate: Estimate,
     out_path: str | Path,
@@ -55,6 +83,7 @@ def build_estimate_pdf(
     subject: str = "設備工事一式",
     issue_date: str = "",
     tax_label: str = "消費税",
+    locale: str = "ja",
 ) -> Path:
     """見積から御見積書PDFを生成して out_path に保存する。"""
     f = _font()
@@ -62,6 +91,7 @@ def build_estimate_pdf(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     sym = estimate.currency_symbol or "¥"
     _y = partial(_money, symbol=sym)
+    L = _LABELS.get(locale, _LABELS["ja"])
 
     body = ParagraphStyle("b", fontName=f, fontSize=9, leading=12, textColor=NAVY)
     small = ParagraphStyle("s", fontName=f, fontSize=8, leading=11, textColor=GREY)
@@ -69,7 +99,7 @@ def build_estimate_pdf(
     title = ParagraphStyle("t", fontName=f, fontSize=24, leading=28, textColor=NAVY, alignment=1)
 
     story: list = []
-    story.append(Paragraph("御 見 積 書", title))
+    story.append(Paragraph(L["title"], title))
     story.append(Spacer(1, 2))
     # オレンジのアクセント線
     rule = Table([[""]], colWidths=[166 * mm], rowHeights=[2.4])
@@ -79,16 +109,16 @@ def build_estimate_pdf(
 
     # 宛先（左） / 発行者・発行日（右）
     left = [
-        Paragraph(f"<b>{client or '　'} 御中</b>", ParagraphStyle("c", fontName=f, fontSize=13, textColor=NAVY)),
+        Paragraph(L["to"](client), ParagraphStyle("c", fontName=f, fontSize=13, textColor=NAVY)),
         Spacer(1, 4),
-        Paragraph(f"件名：{subject}", body),
-        Paragraph("下記のとおり御見積申し上げます。", small),
+        Paragraph(f"{L['subject']}{subject}", body),
+        Paragraph(L["intro"], small),
     ]
     right = [
-        Paragraph(f"発行日：{issue_date or '　　　年　　月　　日'}", rcell),
+        Paragraph(f"{L['date']}{issue_date or L['date_ph']}", rcell),
         Spacer(1, 2),
-        Paragraph(f"{vendor or '　'}", rcell),
-        Paragraph("登録番号 T________________", small),
+        Paragraph(f"{vendor or '—'}", rcell),
+        Paragraph(L["reg"], small),
     ]
     head = Table([[left, right]], colWidths=[100 * mm, 66 * mm])
     head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -97,7 +127,7 @@ def build_estimate_pdf(
 
     # ご請求金額（税込）の大箱
     total_box = Table(
-        [[Paragraph("お見積金額（税込）", ParagraphStyle("tl", fontName=f, fontSize=11, textColor=colors.white)),
+        [[Paragraph(L["total_box"], ParagraphStyle("tl", fontName=f, fontSize=11, textColor=colors.white)),
           Paragraph(_y(estimate.total), ParagraphStyle("tv", fontName=f, fontSize=20, textColor=colors.white, alignment=2))]],
         colWidths=[83 * mm, 83 * mm],
     )
@@ -110,7 +140,7 @@ def build_estimate_pdf(
     story.append(Spacer(1, 12))
 
     # 明細（カテゴリ別）
-    rows = [["No", "カテゴリ", "名称", "仕様", "数量", "単位", "単価", "金額"]]
+    rows = [list(L["headers"])]
     lines = sorted(estimate.lines, key=lambda ln: (ln.item.category or "zzz", ln.item.name))
     for i, ln in enumerate(lines, start=1):
         rows.append([
@@ -134,16 +164,16 @@ def build_estimate_pdf(
     story.append(Spacer(1, 10))
 
     # 内訳（右寄せの小表）
-    mh = f"{estimate.man_hours:g} 人工" if estimate.man_hours else "—"
+    mh = f"{estimate.man_hours:g} {L['manday_unit']}" if estimate.man_hours else "—"
     brk = [
-        ["材料費 計", _y(estimate.material_total)],
-        ["労務費 計", _y(estimate.labor_total)],
-        ["（総人工）", mh],
-        ["小計", _y(estimate.subtotal)],
-        [f"現場管理費", _y(estimate.site_overhead)],
-        [f"一般管理費", _y(estimate.general_overhead)],
-        [f"{tax_label}（{estimate.tax_rate:.0%}）", _y(estimate.tax)],
-        ["合計（税込）", _y(estimate.total)],
+        [L["material"], _y(estimate.material_total)],
+        [L["labor"], _y(estimate.labor_total)],
+        [L["manhours"], mh],
+        [L["subtotal"], _y(estimate.subtotal)],
+        [L["site_oh"], _y(estimate.site_overhead)],
+        [L["general_oh"], _y(estimate.general_overhead)],
+        [f"{tax_label} ({estimate.tax_rate:.0%})", _y(estimate.tax)],
+        [L["total"], _y(estimate.total)],
     ]
     bt = Table(brk, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")
     bt.setStyle(TableStyle([
@@ -156,12 +186,10 @@ def build_estimate_pdf(
     ]))
     story.append(bt)
     story.append(Spacer(1, 12))
-    story.append(Paragraph(
-        "・本見積の有効期限は発行日より30日間です。・数量はAI拾い出し＋人確認に基づく概算で、"
-        "最終確認のうえ確定します。・記載の単価・歩掛は社内標準であり、現場条件により調整します。", small))
+    story.append(Paragraph(L["footer"], small))
 
     SimpleDocTemplate(
         str(out_path), pagesize=A4, leftMargin=22 * mm, rightMargin=22 * mm,
-        topMargin=18 * mm, bottomMargin=16 * mm, title="御見積書",
+        topMargin=18 * mm, bottomMargin=16 * mm, title=L["doc_title"],
     ).build(story)
     return out_path

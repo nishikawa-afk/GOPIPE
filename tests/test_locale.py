@@ -21,9 +21,15 @@ def test_resolve_prefers_locale_dir():
 
 
 def test_resolve_falls_back_to_flat_ja():
-    # extraction.txt は flat のみ → en でも flat(ja既定) にフォールバック
-    p = locale.resolve("extraction.txt", locale="en")
+    # municipalities.yaml は日本固有=flat のみ → en でも flat(ja既定) にフォールバック
+    p = locale.resolve("municipalities.yaml", locale="en")
     assert p.exists() and p.parent.name == "prompts"
+
+
+def test_en_has_own_extraction_prompt():
+    # en は独自の抽出プロンプトを持つ（フォールバックしない）
+    p = locale.resolve("extraction.txt", locale="en")
+    assert p.exists() and p.parent.name == "en"
 
 
 def test_default_locale_is_ja(monkeypatch):
