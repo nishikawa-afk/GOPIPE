@@ -5,7 +5,7 @@ reportlab ＋ 日本語TTF で、ネイビー×オレンジの体裁の御見積
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from functools import partial
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -42,8 +42,8 @@ def _font() -> str:
     return "Helvetica"
 
 
-def _yen(n: float) -> str:
-    return f"¥{int(round(n)):,}"
+def _money(n: float, symbol: str = "¥") -> str:
+    return f"{symbol}{int(round(n)):,}"
 
 
 def build_estimate_pdf(
@@ -54,11 +54,14 @@ def build_estimate_pdf(
     vendor: str = "",
     subject: str = "設備工事一式",
     issue_date: str = "",
+    tax_label: str = "消費税",
 ) -> Path:
     """見積から御見積書PDFを生成して out_path に保存する。"""
     f = _font()
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    sym = estimate.currency_symbol or "¥"
+    _y = partial(_money, symbol=sym)
 
     body = ParagraphStyle("b", fontName=f, fontSize=9, leading=12, textColor=NAVY)
     small = ParagraphStyle("s", fontName=f, fontSize=8, leading=11, textColor=GREY)
@@ -95,7 +98,7 @@ def build_estimate_pdf(
     # ご請求金額（税込）の大箱
     total_box = Table(
         [[Paragraph("お見積金額（税込）", ParagraphStyle("tl", fontName=f, fontSize=11, textColor=colors.white)),
-          Paragraph(_yen(estimate.total), ParagraphStyle("tv", fontName=f, fontSize=20, textColor=colors.white, alignment=2))]],
+          Paragraph(_y(estimate.total), ParagraphStyle("tv", fontName=f, fontSize=20, textColor=colors.white, alignment=2))]],
         colWidths=[83 * mm, 83 * mm],
     )
     total_box.setStyle(TableStyle([
@@ -113,7 +116,7 @@ def build_estimate_pdf(
         rows.append([
             str(i), ln.item.category or "", Paragraph(ln.item.name, body),
             Paragraph(ln.item.spec or "", small), f"{ln.item.quantity:g}", ln.item.unit or "",
-            _yen(ln.unit_price), _yen(ln.amount),
+            _y(ln.unit_price), _y(ln.amount),
         ])
     tbl = Table(rows, colWidths=[9 * mm, 18 * mm, 46 * mm, 33 * mm, 14 * mm, 10 * mm, 18 * mm, 18 * mm], repeatRows=1)
     style = [
@@ -133,14 +136,14 @@ def build_estimate_pdf(
     # 内訳（右寄せの小表）
     mh = f"{estimate.man_hours:g} 人工" if estimate.man_hours else "—"
     brk = [
-        ["材料費 計", _yen(estimate.material_total)],
-        ["労務費 計", _yen(estimate.labor_total)],
+        ["材料費 計", _y(estimate.material_total)],
+        ["労務費 計", _y(estimate.labor_total)],
         ["（総人工）", mh],
-        ["小計", _yen(estimate.subtotal)],
-        [f"現場管理費", _yen(estimate.site_overhead)],
-        [f"一般管理費", _yen(estimate.general_overhead)],
-        [f"消費税（{estimate.tax_rate:.0%}）", _yen(estimate.tax)],
-        ["合計（税込）", _yen(estimate.total)],
+        ["小計", _y(estimate.subtotal)],
+        [f"現場管理費", _y(estimate.site_overhead)],
+        [f"一般管理費", _y(estimate.general_overhead)],
+        [f"{tax_label}（{estimate.tax_rate:.0%}）", _y(estimate.tax)],
+        ["合計（税込）", _y(estimate.total)],
     ]
     bt = Table(brk, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")
     bt.setStyle(TableStyle([

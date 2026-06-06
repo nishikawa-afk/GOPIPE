@@ -39,6 +39,17 @@ def test_learned_alias_improves_classification():
     assert after[0].category != "その他"
 
 
+def test_locale_isolation(tmp_path):
+    # 国ごとに堀を分離（en の学習は ja に混ざらない・その逆も）
+    p = tmp_path / "l.json"
+    record_alias("Air Handler", "Air Handling Unit", path=p, locale="en")
+    record_alias("全熱交ユニット", "全熱交換器", path=p, locale="ja")
+    en = load_aliases(p, locale="en", remote=False)
+    ja = load_aliases(p, locale="ja", remote=False)
+    assert "AirHandler" in en and "AirHandler" not in ja
+    assert "全熱交ユニット" in ja and "全熱交ユニット" not in en
+
+
 def test_load_aliases_remote_safe_when_supabase_off(tmp_path):
     # Supabase 未設定でも remote=True で落ちず、ローカルJSONを返す
     p = tmp_path / "l.json"

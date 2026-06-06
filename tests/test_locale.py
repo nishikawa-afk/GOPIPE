@@ -37,6 +37,12 @@ def test_available_locales_has_ja_and_en():
     assert "ja" in locs and "en" in locs
 
 
+def test_money_for_currency():
+    assert locale.money_for("ja")["symbol"] == "¥"
+    m = locale.money_for("en")
+    assert m["symbol"] == "$" and m["code"] == "USD"
+
+
 def test_en_knowledge_valid_and_usable():
     d = TakeoffDictionary.from_yaml(locale.resolve("dictionary.yaml", locale="en"))
     pr = Pricer.from_yaml(locale.resolve("unit_prices.yaml", locale="en"))

@@ -61,6 +61,7 @@ class Estimate:
     lines: list[EstimateLine]
     overhead_rate: float = 0.10  # 諸経費率
     tax_rate: float = 0.10  # 消費税率
+    currency_symbol: str = "¥"  # 通貨記号（海外展開: $ 等）
 
     @property
     def subtotal(self) -> int:
@@ -116,11 +117,14 @@ def build_estimate(
     *,
     overhead_rate: float = 0.10,
     tax_rate: float = 0.10,
+    currency_symbol: str = "¥",
     vendor_id: str | None = None,
 ) -> Estimate:
     """拾い出し項目に単価を当てて見積を組み立てる。"""
     lines = [EstimateLine(item=it, quote=pricer.quote(it, vendor_id=vendor_id)) for it in items]
-    return Estimate(lines=lines, overhead_rate=overhead_rate, tax_rate=tax_rate)
+    return Estimate(
+        lines=lines, overhead_rate=overhead_rate, tax_rate=tax_rate, currency_symbol=currency_symbol,
+    )
 
 
 def _style_header(ws, ncol: int) -> None:

@@ -18,48 +18,71 @@ def _norm(s: str | None) -> str:
     return unicodedata.normalize("NFKC", (s or "").strip()).replace(" ", "").replace("　", "")
 
 
-def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default", remote: bool = True) -> dict:
-    """学習済み別名を返す。ローカルJSON ＋（Supabase有効なら）リモートをマージ。
+def _read(path: str | Path) -> dict:
+    """ローカルJSONを生の dict（全ロケールのキー込み）で読む。"""
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
 
+
+def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default",
+                 locale: str | None = None, remote: bool = True) -> dict:
+    """指定ロケールの学習済み別名 {raw: info} を返す。ローカル＋（有効なら）Supabaseをマージ。
+
+    ローカルJSONのキーは `"<locale>/<raw>"`。旧形式の flat キーは ja 既定として扱う。
     Supabase 値で上書き（恒久・顧客横断の永続が真の堀）。未設定でもローカルで機能。
     """
-    data: dict = {}
-    p = Path(path)
-    if p.exists():
-        try:
-            loaded = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
-        except Exception:  # noqa: BLE001
-            data = {}
+    from .locale import DEFAULT_LOCALE, current_locale
+
+    loc = (locale or current_locale())
+    raw = _read(path)
+    out: dict = {}
+    for k, v in raw.items():
+        if "/" in k:
+            kl, kraw = k.split("/", 1)
+            if kl == loc:
+                out[kraw] = v
+        elif loc == DEFAULT_LOCALE:  # 旧 flat キー = ja
+            out[k] = v
     if remote:
         try:
             from . import store
             if store.is_enabled():
-                data = {**data, **store.load_learned_aliases(org)}
+                out = {**out, **store.load_learned_aliases(org, locale=loc)}
         except Exception:  # noqa: BLE001
             pass
-    return data
+    return out
 
 
 def record_alias(
     raw: str, canonical: str, *, category: str | None = None, unit: str | None = None,
-    path: str | Path = DEFAULT_PATH, org: str | None = None,
+    path: str | Path = DEFAULT_PATH, org: str | None = None, locale: str | None = None,
 ) -> bool:
-    """生の名称 raw を正規名 canonical に学習する。変化が無い/空なら False。"""
+    """生の名称 raw を正規名 canonical に（ロケール単位で）学習する。変化が無い/空なら False。"""
+    from .locale import current_locale
+
+    loc = (locale or current_locale())
     raw_n = _norm(raw)
     canon = (canonical or "").strip()
     if not raw_n or not canon or _norm(canon) == raw_n:
         return False
     p = Path(path)
-    data = load_aliases(p)
-    data[raw_n] = {"canonical": canon, "category": category, "unit": unit, "raw": (raw or "").strip()}
+    data = _read(p)
+    data[f"{loc}/{raw_n}"] = {
+        "canonical": canon, "category": category, "unit": unit,
+        "raw": (raw or "").strip(), "locale": loc,
+    }
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     try:  # Supabase 併用（任意・best-effort）
         from . import store
         if hasattr(store, "record_learned_alias") and store.is_enabled():
-            store.record_learned_alias(org or "default", raw_n, canon, category, unit)
+            store.record_learned_alias(org or "default", raw_n, canon, category, unit, locale=loc)
     except Exception:  # noqa: BLE001
         pass
     return True

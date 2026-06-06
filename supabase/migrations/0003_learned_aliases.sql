@@ -9,10 +9,11 @@ create table if not exists learned_aliases (
   canonical  text not null,           -- 学習後の正規名
   category   text,
   unit       text,
+  locale     text not null default 'ja',   -- 海外展開: 国ごとに堀を育てる
   hits       integer not null default 1,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (org_id, raw)
+  unique (org_id, locale, raw)
 );
 create index if not exists idx_learned_aliases_org on learned_aliases(org_id);
 

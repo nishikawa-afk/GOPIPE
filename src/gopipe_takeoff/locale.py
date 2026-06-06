@@ -41,3 +41,14 @@ def available_locales() -> list[str]:
             if p.is_dir() and any(p.iterdir()):
                 locs.add(p.name.lower())
     return sorted(locs)
+
+
+MONEY = {
+    "ja": {"symbol": "¥", "code": "JPY", "tax": 0.10, "tax_label": "消費税"},
+    "en": {"symbol": "$", "code": "USD", "tax": 0.0, "tax_label": "Sales Tax"},
+}
+
+
+def money_for(locale: str | None = None) -> dict:
+    """ロケールの通貨・既定税率（symbol / code / tax / tax_label）。未知は ja。"""
+    return MONEY.get((locale or current_locale()), MONEY[DEFAULT_LOCALE])

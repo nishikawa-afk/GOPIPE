@@ -33,12 +33,19 @@ STANDARD_CATEGORIES = (
     # --- 断熱・気密（建築断熱） ---
     "断熱材",
     "気密防湿",
+    # --- 海外展開(en)カテゴリ / VISION.md ---
+    "HVAC",
+    "Equipment",
+    "Piping",
+    "Duct",
+    "Valve",
+    "Insulation",
     # --- どこにも当てはまらないとき ---
     "その他",
 )
 
 # 標準単位。ここに無い単位は warning。
-STANDARD_UNITS = ("m2", "m", "式", "箇所", "枚", "面", "台", "本", "個", "kg", "t")
+STANDARD_UNITS = ("m2", "m", "式", "箇所", "枚", "面", "台", "本", "個", "kg", "t", "ea", "ft", "lf")
 
 # classifier の部分一致しきい値（< だと事実上無視される）
 MIN_ALIAS_LENGTH_FOR_PARTIAL_MATCH = 3

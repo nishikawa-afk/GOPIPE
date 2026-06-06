@@ -25,6 +25,7 @@ for _p in (ROOT / "src", ROOT / "shared"):
         sys.path.insert(0, str(_p))
 
 from gopipe_takeoff.locale import available_locales as _locales  # noqa: E402
+from gopipe_takeoff.locale import money_for as _money_for  # noqa: E402
 from gopipe_takeoff.locale import resolve as _kpath  # noqa: E402
 
 # Streamlit Community Cloud: Secrets を環境変数へ橋渡し（claude/openai プロバイダ用）。
@@ -127,6 +128,28 @@ _loc = st.sidebar.selectbox(
     help="知識(辞書/単価/抽出プロンプト)を国コードで切替。en は海外展開の基盤(prompts/en)。",
 )
 os.environ["GOPIPE_LOCALE"] = _loc
+
+# ----- i18n（主要文言。残りは順次。海外展開の土台 / VISION.md）-----
+I18N = {
+    "ja": {
+        "hero_sub": "未来へ、PIPEを架ける。",
+        "hero_desc": "拾い出し → 見積 → 申請 → 保全。設備積算を、AIで“いま”から“未来”へつなぐ。",
+        "run": "▶ 拾い出し実行",
+        "tab_take": "📋 拾い出し", "tab_view": "📐 図面プレビュー", "tab_bench": "📊 精度",
+        "tab_est": "💰 見積", "tab_app": "📄 申請", "tab_maint": "🛡 予防保全", "tab_emg": "🚿 透明見積",
+    },
+    "en": {
+        "hero_sub": "Bridging takeoff to the future.",
+        "hero_desc": "Takeoff → Estimate → Filing → Maintenance. Construction takeoff, from now to the future — with AI.",
+        "run": "▶ Run Takeoff",
+        "tab_take": "📋 Takeoff", "tab_view": "📐 Drawing", "tab_bench": "📊 Accuracy",
+        "tab_est": "💰 Estimate", "tab_app": "📄 Filing", "tab_maint": "🛡 Maintenance", "tab_emg": "🚿 Transparent",
+    },
+}
+
+
+def _t(key: str) -> str:
+    return I18N.get(_loc, I18N["ja"]).get(key, I18N["ja"].get(key, key))
 uploaded = st.sidebar.file_uploader("設備図PDF", type=["pdf"])
 with st.sidebar.expander("⚙ 高精度モード（スキャン図向け）"):
     _grid = st.select_slider(
@@ -137,7 +160,7 @@ with st.sidebar.expander("⚙ 高精度モード（スキャン図向け）"):
         "多パス（漏れ確認）", value=False,
         help="抽出後にもう一度『漏れがないか』をAIに確認させます（API +1回/ページ）。",
     )
-run = st.sidebar.button("▶ 拾い出し実行", type="primary", use_container_width=True)
+run = st.sidebar.button(_t("run"), type="primary", use_container_width=True)
 st.sidebar.markdown("---")
 try:
     from gopipe_takeoff.learned import load_aliases as _la0
@@ -149,12 +172,12 @@ except Exception:  # noqa: BLE001
 st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫で動きます。")
 
 st.markdown(
-    """
+    f"""
 <div class="gp-hero">
   <div class="gp-kicker">PIPING · HVAC · INSULATION — AI TAKEOFF</div>
   <div class="gp-title">GOPIPE</div>
-  <div class="gp-sub">未来へ、PIPEを架ける。</div>
-  <div class="gp-desc">拾い出し → 見積 → 申請 → 保全。設備積算を、AIで“いま”から“未来”へつなぐ。</div>
+  <div class="gp-sub">{_t('hero_sub')}</div>
+  <div class="gp-desc">{_t('hero_desc')}</div>
   <svg class="gp-pipe" viewBox="0 0 1200 150" preserveAspectRatio="xMidYMid meet" role="img" aria-label="未来へ架かるパイプ">
     <defs>
       <linearGradient id="gpPg" x1="0" y1="0" x2="1" y2="0">
@@ -444,8 +467,8 @@ with st.expander("📦 成果物を一括ダウンロード（ZIP：拾い出し
         st.success("ZIPを生成しました。下のボタンで保存できます。")
 
 tab_take, tab_view, tab_bench, tab_est, tab_app, tab_maint, tab_emg = st.tabs(
-    ["📋 拾い出し", "📐 図面プレビュー", "📊 精度", "💰 見積 (F-12)",
-     "📄 申請 (F-16)", "🛡 予防保全 (F-17)", "🚿 透明見積 (F-15)"]
+    [_t("tab_take"), _t("tab_view"), _t("tab_bench"), _t("tab_est"),
+     _t("tab_app"), _t("tab_maint"), _t("tab_emg")]
 )
 
 # ----------------------------- 拾い出し -----------------------------
@@ -584,16 +607,19 @@ with tab_est:
     from gopipe_takeoff.pricer import Pricer
 
     overhead = st.slider("諸経費率", 0.0, 0.30, 0.10, 0.01)
+    _m = _money_for()
     pricer = Pricer.from_yaml(_kpath("unit_prices.yaml"))
-    est = build_estimate(items, pricer, overhead_rate=overhead)
+    est = build_estimate(items, pricer, overhead_rate=overhead,
+                         tax_rate=_m["tax"], currency_symbol=_m["symbol"])
+    _cs = est.currency_symbol
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("小計", f"¥{est.subtotal:,}")
-    c2.metric("諸経費＋消費税", f"¥{est.overhead + est.tax:,}")
-    c3.metric("合計（税込）", f"¥{est.total:,}")
+    c1.metric("小計", f"{_cs}{est.subtotal:,}")
+    c2.metric(f"諸経費＋{_m['tax_label']}", f"{_cs}{est.overhead + est.tax:,}")
+    c3.metric("合計（税込）", f"{_cs}{est.total:,}")
     c4, c5, c6 = st.columns(3)
-    c4.metric("材料費 計", f"¥{est.material_total:,}")
-    c5.metric("労務費 計", f"¥{est.labor_total:,}")
+    c4.metric("材料費 計", f"{_cs}{est.material_total:,}")
+    c5.metric("労務費 計", f"{_cs}{est.labor_total:,}")
     c6.metric("総人工（歩掛）", f"{est.man_hours:g} 人工" if est.man_hours else "—")
 
     st.dataframe(
@@ -630,6 +656,7 @@ with tab_est:
             est, OUT_DIR / "御見積書.pdf",
             client=_cli, vendor=_ven, subject=_subj,
             issue_date=f"{_today.year}年{_today.month}月{_today.day}日",
+            tax_label=_m["tax_label"],
         )
         st.download_button(
             "⬇ 御見積書.pdf をダウンロード", _pdfp.read_bytes(),
