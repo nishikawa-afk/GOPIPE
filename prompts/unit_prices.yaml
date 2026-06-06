@@ -18,23 +18,27 @@ prices:
     unit_price: 85000
     unit: 台
     material_ratio: 0.70
+    labor_hours: 0.5
     notes: 洋式・温水洗浄便座込みの標準品。撤去更新は別途
   - category: 衛生器具
     name: 洗面器
     unit_price: 45000
     unit: 台
     material_ratio: 0.65
+    labor_hours: 0.4
   - category: 機器
     name: 給湯器
     unit_price: 150000
     unit: 台
     material_ratio: 0.70
+    labor_hours: 0.6
     notes: 24号 壁掛ガス給湯器 標準
   - category: 機器
     name: ポンプ
     unit_price: 120000
     unit: 台
     material_ratio: 0.65
+    labor_hours: 0.8
 
   # ===================== 系統別カテゴリ デフォルト =====================
   - category: 給水

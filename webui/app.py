@@ -581,6 +581,10 @@ with tab_est:
     c1.metric("小計", f"¥{est.subtotal:,}")
     c2.metric("諸経費＋消費税", f"¥{est.overhead + est.tax:,}")
     c3.metric("合計（税込）", f"¥{est.total:,}")
+    c4, c5, c6 = st.columns(3)
+    c4.metric("材料費 計", f"¥{est.material_total:,}")
+    c5.metric("労務費 計", f"¥{est.labor_total:,}")
+    c6.metric("総人工（歩掛）", f"{est.man_hours:g} 人工" if est.man_hours else "—")
 
     st.dataframe(
         pd.DataFrame(
@@ -602,6 +606,26 @@ with tab_est:
     d1, d2 = st.columns(2)
     d1.download_button("⬇ 見積書.xlsx", ep.read_bytes(), "見積書.xlsx", use_container_width=True)
     d2.download_button("⬇ 材料発注書.xlsx", pp.read_bytes(), "材料発注書.xlsx", use_container_width=True)
+
+    st.markdown("##### 🧾 ブランド見積書PDF（提案書級デザイン・そのまま客先提出）")
+    pc1, pc2, pc3 = st.columns(3)
+    _cli = pc1.text_input("宛先（御中）", "株式会社ハルキ", key="est_client")
+    _ven = pc2.text_input("発行者", "株式会社and", key="est_vendor")
+    _subj = pc3.text_input("件名", "設備工事一式", key="est_subject")
+    if st.button("ブランド見積書PDFを生成", key="est_pdf_gen", type="primary"):
+        from gopipe_takeoff.estimate_pdf import build_estimate_pdf
+
+        _today = datetime.date.today()
+        _pdfp = build_estimate_pdf(
+            est, OUT_DIR / "御見積書.pdf",
+            client=_cli, vendor=_ven, subject=_subj,
+            issue_date=f"{_today.year}年{_today.month}月{_today.day}日",
+        )
+        st.download_button(
+            "⬇ 御見積書.pdf をダウンロード", _pdfp.read_bytes(),
+            "御見積書.pdf", mime="application/pdf", use_container_width=True, key="est_pdf_dl",
+        )
+        st.success("ブランド見積書PDFを生成しました。下のボタンで保存できます。")
 
 # ----------------------------- 申請 (F-16) -----------------------------
 with tab_app:
