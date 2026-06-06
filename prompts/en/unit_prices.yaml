@@ -1,0 +1,33 @@
+# GOPIPE unit prices (en) — USD starter / Phase-1 skeleton (VISION.md).
+# Same schema as prompts/unit_prices.yaml. Prices are placeholder USD; tune per market.
+prices:
+  - category: HVAC
+    unit_price: 280
+    unit: ea
+    material_ratio: 0.60
+    labor_hours: 0.4
+  - category: Equipment
+    unit_price: 3500
+    unit: ea
+    material_ratio: 0.70
+    labor_hours: 1.0
+  - category: Piping
+    unit_price: 22
+    unit: m
+    material_ratio: 0.55
+    labor_hours: 0.06
+  - category: Duct
+    unit_price: 40
+    unit: m2
+    material_ratio: 0.55
+  - category: Valve
+    unit_price: 120
+    unit: ea
+    material_ratio: 0.60
+  - category: Insulation
+    unit_price: 9
+    unit: m2
+    material_ratio: 0.50
+  # default (always matches, lowest specificity)
+  - unit_price: 50
+    material_ratio: 0.50

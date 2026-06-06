@@ -9,6 +9,7 @@ from pathlib import Path
 from llm_client import LLMClient, LLMMessage, get_llm_client
 
 from .equipment_table import extract_from_text
+from .locale import resolve as resolve_knowledge
 from .models import BBox, Drawing, DrawingPage, TakeoffItem, Tile
 
 logger = logging.getLogger("gopipe.extractor")
@@ -295,8 +296,8 @@ def extract(
     抽出し、vision 結果と突合する（数量・型番を機器表優先で採用、拾い漏れを補完）。
     """
     client = client or get_llm_client()
-    system_prompt = _load_prompt(PROMPT_PATH)
-    verify_prompt  = _load_prompt(VERIFY_PROMPT_PATH) if two_pass else ""
+    system_prompt = _load_prompt(resolve_knowledge("extraction.txt"))
+    verify_prompt  = _load_prompt(resolve_knowledge("verification.txt")) if two_pass else ""
     all_items: list[TakeoffItem] = []
 
     for page in drawing.pages:

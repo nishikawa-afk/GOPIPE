@@ -9,6 +9,7 @@ from .classifier import classify
 from .dictionary import TakeoffDictionary
 from .excel_writer import write_excel
 from .extractor import extract
+from .locale import resolve as resolve_knowledge
 from .marker import write_marker_pdf
 from .models import TakeoffItem
 from .pdf_loader import load_pdf
@@ -27,7 +28,9 @@ class TakeoffResult:
 
 class TakeoffPipeline:
     def __init__(self, *, dictionary_path: str | Path | None = None) -> None:
-        self.dictionary = TakeoffDictionary.from_yaml(dictionary_path or DICTIONARY_PATH)
+        self.dictionary = TakeoffDictionary.from_yaml(
+            dictionary_path or resolve_knowledge("dictionary.yaml")
+        )
 
     def run(
         self,

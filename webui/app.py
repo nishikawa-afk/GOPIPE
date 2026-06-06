@@ -24,6 +24,9 @@ for _p in (ROOT / "src", ROOT / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+from gopipe_takeoff.locale import available_locales as _locales  # noqa: E402
+from gopipe_takeoff.locale import resolve as _kpath  # noqa: E402
+
 # Streamlit Community Cloud: Secrets を環境変数へ橋渡し（claude/openai プロバイダ用）。
 # 未設定でも mock と各計算機能（断熱/実測/立管/凡例）は動作する。
 try:
@@ -117,6 +120,13 @@ provider = st.sidebar.selectbox(
     index=0,
     help="mock=APIキー不要のサンプル。claude=実図面の本番抽出（要 ANTHROPIC_API_KEY）",
 )
+_loc_opts = _locales()
+_loc = st.sidebar.selectbox(
+    "言語 / Locale", _loc_opts,
+    index=(_loc_opts.index("ja") if "ja" in _loc_opts else 0),
+    help="知識(辞書/単価/抽出プロンプト)を国コードで切替。en は海外展開の基盤(prompts/en)。",
+)
+os.environ["GOPIPE_LOCALE"] = _loc
 uploaded = st.sidebar.file_uploader("設備図PDF", type=["pdf"])
 with st.sidebar.expander("⚙ 高精度モード（スキャン図向け）"):
     _grid = st.select_slider(
@@ -206,7 +216,7 @@ with st.expander("🧱 断熱面積を計算（実測 / LiDAR・PDF不要）"):
         ]
         _ins = classify(
             to_takeoff_items(rooms_from_dicts(_recs)),
-            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+            TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
         )
         if _ins:
             st.dataframe(
@@ -217,7 +227,7 @@ with st.expander("🧱 断熱面積を計算（実測 / LiDAR・PDF不要）"):
                 ]),
                 use_container_width=True, hide_index=True,
             )
-            _est = build_estimate(_ins, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            _est = build_estimate(_ins, Pricer.from_yaml(_kpath("unit_prices.yaml")))
             st.metric("断熱 見積（税込）", f"¥{_est.total:,}")
         else:
             st.warning("面積が算出できませんでした。寸法（幅・奥行・天井高）か、床面積/壁面積を入れてください。")
@@ -251,7 +261,7 @@ with st.expander("📏 現地実測（ダクト/配管/台数・LiDAR/巻尺・P
         ]
         _si = classify(
             items_from_measures(_ms),
-            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+            TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
         )
         if _si:
             st.dataframe(
@@ -262,7 +272,7 @@ with st.expander("📏 現地実測（ダクト/配管/台数・LiDAR/巻尺・P
                 ]),
                 use_container_width=True, hide_index=True,
             )
-            _e = build_estimate(_si, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            _e = build_estimate(_si, Pricer.from_yaml(_kpath("unit_prices.yaml")))
             st.metric("空調(実測) 見積（税込）", f"¥{_e.total:,}")
         else:
             st.warning("算出できませんでした。種別（角ダクト/丸ダクト/配管/個数/台数）と寸法・個数を入れてください。")
@@ -297,7 +307,7 @@ with st.expander("🧮 立管・延長計算（系統図×階高・PDF不要）"
         ]
         _ri = classify(
             to_takeoff_items(risers_from_dicts(_rs)),
-            TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+            TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
         )
         if _ri:
             st.dataframe(
@@ -308,7 +318,7 @@ with st.expander("🧮 立管・延長計算（系統図×階高・PDF不要）"
                 ]),
                 use_container_width=True, hide_index=True,
             )
-            _e = build_estimate(_ri, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+            _e = build_estimate(_ri, Pricer.from_yaml(_kpath("unit_prices.yaml")))
             st.metric("立管(延長計算) 見積（税込）", f"¥{_e.total:,}")
         else:
             st.warning("算出できませんでした。各系統に『階数』と『階高m』を入れてください。")
@@ -334,7 +344,7 @@ with st.expander("🔣 凡例ドリブン記号カウント（ベクターPDF・
             _tmp.write_bytes(_lc_pdf.getvalue())
             _lc = classify(
                 count_from_pdf(str(_tmp)),
-                TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+                TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
             )
             if _lc:
                 st.dataframe(
@@ -345,7 +355,7 @@ with st.expander("🔣 凡例ドリブン記号カウント（ベクターPDF・
                     ]),
                     use_container_width=True, hide_index=True,
                 )
-                _e = build_estimate(_lc, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+                _e = build_estimate(_lc, Pricer.from_yaml(_kpath("unit_prices.yaml")))
                 st.metric("記号カウント 見積（税込）", f"¥{_e.total:,}")
             else:
                 st.info("凡例または記号が検出できませんでした。テキスト層のあるベクターPDFか確認してください。")
@@ -377,7 +387,7 @@ if run:
                 from gopipe_takeoff.classifier import classify as _cls
                 from gopipe_takeoff.dictionary import TakeoffDictionary as _TD
                 from gopipe_takeoff.learned import load_aliases as _la
-                _d = _TD.from_yaml(ROOT / "prompts" / "dictionary.yaml")
+                _d = _TD.from_yaml(_kpath("dictionary.yaml"))
                 _d.add_learned(_la())
                 _items = _cls(result.items, _d)
             except Exception:  # noqa: BLE001
@@ -419,7 +429,7 @@ with st.expander("📦 成果物を一括ダウンロード（ZIP：拾い出し
 
         _tmpx = Path(tempfile.gettempdir()) / "gopipe_toridashi.xlsx"
         write_excel(items, _tmpx)
-        _zest = _zbe(items, _zpr.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+        _zest = _zbe(items, _zpr.from_yaml(_kpath("unit_prices.yaml")))
         _zmd = build_application_markdown(items, ProjectInfo(municipality="東京都水道局"))
         _zsum = f"GOPIPE 見積サマリ\n小計(税抜): ¥{_zest.subtotal:,}\n合計(税込): ¥{_zest.total:,}\n"
         _zbuf = io.BytesIO()
@@ -476,7 +486,7 @@ with tab_take:
             for _, r in _e.iterrows() if str(r.get("名称") or "").strip()
         ]
         st.session_state["items"] = [it.model_dump() for it in _rev]
-        _est = _be(_rev, _pr.from_yaml(ROOT / "prompts" / "unit_prices.yaml"))
+        _est = _be(_rev, _pr.from_yaml(_kpath("unit_prices.yaml")))
         st.metric("修正後 見積（税込）", f"¥{_est.total:,}")
         st.success(f"{len(_rev)} 件で再計算しました。各タブにも反映されます。")
     if _b2.button("✅ 学習に記録（確定）", key="review_learn", use_container_width=True):
@@ -574,7 +584,7 @@ with tab_est:
     from gopipe_takeoff.pricer import Pricer
 
     overhead = st.slider("諸経費率", 0.0, 0.30, 0.10, 0.01)
-    pricer = Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml")
+    pricer = Pricer.from_yaml(_kpath("unit_prices.yaml"))
     est = build_estimate(items, pricer, overhead_rate=overhead)
 
     c1, c2, c3 = st.columns(3)

@@ -23,6 +23,8 @@ for _p in (ROOT / "src", ROOT / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+from gopipe_takeoff.locale import resolve as _kpath  # noqa: E402
+
 # Vercel 等サーバレスは /tmp 以外が読取専用。出力 xlsx は応答に含めない副産物なので
 # 書込可能な一時ディレクトリへ逃がす（run_takeoff が out_dir を mkdir する）。
 OUT = Path(tempfile.gettempdir()) / "gopipe_out"
@@ -122,7 +124,7 @@ async def estimate(
     from gopipe_takeoff.pricer import Pricer
 
     result = _takeoff(provider, file)
-    pricer = Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml")
+    pricer = Pricer.from_yaml(_kpath("unit_prices.yaml"))
     est = build_estimate(result.items, pricer, overhead_rate=overhead)
     return {
         "subtotal": est.subtotal,
@@ -241,10 +243,10 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(rooms_from_dicts(rooms)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -270,10 +272,10 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
 
     items = classify(
         items_from_measures(measures),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -301,10 +303,10 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(risers_from_dicts(risers)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -333,10 +335,10 @@ async def legend_count(file: UploadFile | None = File(None), overhead: float = 0
                 "note": "ベクターPDF（テキスト層あり）をアップロードしてください"}
     items = classify(
         count_from_pdf(str(pdf)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),

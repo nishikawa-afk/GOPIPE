@@ -1,0 +1,44 @@
+# GOPIPE dictionary (en) — overseas HVAC takeoff starter / Phase-1 skeleton (VISION.md).
+# Same schema as prompts/dictionary.yaml. Categories/units are English for the en locale.
+# This is a SEED to prove locale separation; extend with local terminology before launch.
+entries:
+  - canonical: Supply Air Diffuser
+    category: HVAC
+    unit: ea
+    aliases: [supply diffuser, supply air outlet]
+  - canonical: Return Air Grille
+    category: HVAC
+    unit: ea
+    aliases: [return grille, return air inlet]
+  - canonical: Exhaust Fan
+    category: HVAC
+    unit: ea
+    aliases: [exhaust fan unit]
+  - canonical: VAV Box
+    category: HVAC
+    unit: ea
+    aliases: [variable air volume box]
+  - canonical: Fan Coil Unit
+    category: Equipment
+    unit: ea
+    aliases: [fancoil unit]
+  - canonical: Air Handling Unit
+    category: Equipment
+    unit: ea
+    aliases: [air handler]
+  - canonical: Chilled Water Pipe
+    category: Piping
+    unit: m
+    aliases: [chilled water piping]
+  - canonical: Ductwork
+    category: Duct
+    unit: m2
+    aliases: [sheet metal duct]
+  - canonical: Gate Valve
+    category: Valve
+    unit: ea
+    aliases: [gate valve assembly]
+  - canonical: Pipe Insulation
+    category: Insulation
+    unit: m2
+    aliases: [thermal insulation]
