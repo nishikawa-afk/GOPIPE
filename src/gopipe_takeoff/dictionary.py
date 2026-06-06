@@ -240,6 +240,36 @@ class TakeoffDictionary:
                 return entry
         return None
 
+    def add_learned(self, aliases: dict) -> int:
+        """学習済み別名 {raw: {canonical, category, unit, raw}} を辞書に統合する。
+
+        ユーザー修正で得た「生の名称(raw) → 正規名(canonical)」を、対応する正規名の
+        エントリにエイリアスとして紐づける（=使うほど分類が賢くなる）。正規名が
+        未登録なら、修正時のカテゴリ/単位で新規エントリを作る。統合した件数を返す。
+        """
+        n = 0
+        for raw, info in (aliases or {}).items():
+            info = info or {}
+            canon = str(info.get("canonical") or raw).strip()
+            if not raw or not canon:
+                continue
+            entry = self._index.get(canon)
+            if entry is None:
+                entry = DictionaryEntry(
+                    canonical=canon,
+                    category=(info.get("category") or "その他"),
+                    unit=(info.get("unit") or ""),
+                    aliases=(),
+                )
+                self.entries.append(entry)
+                self._index[canon] = entry
+            self._index[raw] = entry
+            _orig = info.get("raw")
+            if _orig:
+                self._index[str(_orig)] = entry
+            n += 1
+        return n
+
     @classmethod
     def from_yaml(cls, path: str | Path, *, strict: bool = True) -> TakeoffDictionary:
         """YAML から辞書を読み込む。

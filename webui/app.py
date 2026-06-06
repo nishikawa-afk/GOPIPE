@@ -129,6 +129,13 @@ with st.sidebar.expander("⚙ 高精度モード（スキャン図向け）"):
     )
 run = st.sidebar.button("▶ 拾い出し実行", type="primary", use_container_width=True)
 st.sidebar.markdown("---")
+try:
+    from gopipe_takeoff.learned import load_aliases as _la0
+    _lc0 = len(_la0())
+    if _lc0:
+        st.sidebar.caption(f"🧠 学習の堀：別名 {_lc0} 件を分類に反映中")
+except Exception:  # noqa: BLE001
+    pass
 st.sidebar.caption("mock を選べば PDF 無しでサンプルが一気通貫で動きます。")
 
 st.markdown(
@@ -365,7 +372,17 @@ if run:
     with st.spinner("拾い出し中…"):
         try:
             result = _run_takeoff(pdf_path, provider, grid=_grid, two_pass=_two_pass)
-            st.session_state["items"] = [it.model_dump() for it in result.items]
+            _items = result.items
+            try:  # 学習の堀: これまでの修正(学習別名)を反映して再分類
+                from gopipe_takeoff.classifier import classify as _cls
+                from gopipe_takeoff.dictionary import TakeoffDictionary as _TD
+                from gopipe_takeoff.learned import load_aliases as _la
+                _d = _TD.from_yaml(ROOT / "prompts" / "dictionary.yaml")
+                _d.add_learned(_la())
+                _items = _cls(result.items, _d)
+            except Exception:  # noqa: BLE001
+                pass
+            st.session_state["items"] = [it.model_dump() for it in _items]
         except Exception as e:  # noqa: BLE001
             st.error(f"拾い出しでエラー: {e}")
 
@@ -456,27 +473,36 @@ with tab_take:
         st.success(f"{len(_rev)} 件で再計算しました。各タブにも反映されます。")
     if _b2.button("✅ 学習に記録（確定）", key="review_learn", use_container_width=True):
         from gopipe_takeoff.feedback import record_correction
+        from gopipe_takeoff.learned import record_alias
         _e = _edited.astype(object).where(pd.notna(_edited), None)
-        _orig = {it.name: it for it in items}
         _ts = datetime.date.today().isoformat()
-        _n = 0
-        for _, r in _e.iterrows():
-            _nm = str(r.get("名称") or "").strip()
-            if not _nm:
+        _n = _learned = 0
+        for _i in range(min(len(_rev_src), len(_e))):
+            _o = _rev_src.iloc[_i]
+            _r = _e.iloc[_i]
+            _on = str(_o["名称"])
+            _nn = str(_r.get("名称") or "").strip()
+            if not _nn:
                 continue
-            _o = _orig.get(_nm)
-            _bef = ({"name": _o.name, "spec": _o.spec, "quantity": _o.quantity,
-                     "unit": _o.unit, "location": _o.location, "category": _o.category} if _o else {})
-            _aft = {"name": _nm, "spec": (r.get("仕様") or None), "quantity": float(r.get("数量") or 0),
-                    "unit": (r.get("単位") or None), "location": (r.get("場所") or None),
-                    "category": (r.get("カテゴリ") or None)}
+            _bef = {"name": _on, "spec": (_o["仕様"] or None), "quantity": float(_o["数量"]),
+                    "unit": (_o["単位"] or None), "category": (_o["カテゴリ"] or None)}
+            _aft = {"name": _nn, "spec": (_r.get("仕様") or None), "quantity": float(_r.get("数量") or 0),
+                    "unit": (_r.get("単位") or None), "category": (_r.get("カテゴリ") or None)}
             try:
                 record_correction(project="webui", before=_bef, after=_aft, ts=_ts)
                 _n += 1
             except Exception:  # noqa: BLE001
                 pass
-        st.success(f"{_n} 件を学習データに記録しました（修正・確定サンプル → 次回の精度向上に活用）。")
-        st.caption("※ Streamlit Cloud では当面セッション/一時保存。恒久保存は Supabase 連携で対応予定。")
+            if (_on != _nn) or (str(_o["カテゴリ"] or "") != str(_r.get("カテゴリ") or "")) \
+                    or (str(_o["単位"] or "") != str(_r.get("単位") or "")):
+                try:
+                    if record_alias(_on, _nn, category=(_r.get("カテゴリ") or None), unit=(_r.get("単位") or None)):
+                        _learned += 1
+                except Exception:  # noqa: BLE001
+                    pass
+        st.success(f"{_n} 件を記録・うち {_learned} 件を『学習の堀』に反映（次回、同じ表記を自動で正しく分類）。")
+        if _learned:
+            st.balloons()
 
 # ----------------------------- 見積 (F-12) -----------------------------
 with tab_est:
