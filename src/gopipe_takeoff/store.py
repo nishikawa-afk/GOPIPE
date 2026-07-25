@@ -154,7 +154,7 @@ def replace_takeoff_items(
 def persist_takeoff(
     *, org_slug: str, org_name: str, project_slug: str, title: str,
     items: list[TakeoffItem], source_pdf_path: str | None = None,
-    warnings: list[str] | None = None,
+    file_name: str | None = None, warnings: list[str] | None = None,
 ) -> dict:
     """org → project → drawing → takeoff_items を保存し、id 群と件数を返す。"""
     org_id = ensure_org(org_slug, org_name)
@@ -163,6 +163,7 @@ def persist_takeoff(
     if source_pdf_path:
         drawing_id = create_drawing(
             org_id, project_id, source_pdf_path,
+            file_name=file_name or "",
             page_count=max((it.page for it in items), default=None),
             warnings=warnings,
         )

@@ -45,8 +45,15 @@ export default function Workbench({
       // 図面はブラウザから Storage へ直接送る（Vercel 経由だと 4.5MB で頭打ちになる）
       setPhase("upload");
       const stamp = new Date().toISOString().slice(0, 10);
-      const safeName = file.name.replace(/[^\w.\-ぁ-んァ-ヶ一-龠]/g, "_");
-      const path = `${orgSlug}/${stamp}_${Date.now()}_${safeName}`;
+      // 置き場所の名前は半角英数だけにする。Supabase Storage は日本語のキーを
+      // 受け付けず「Invalid key」で弾く。設備図のファイル名は日本語が普通なので、
+      // ここを日本語のままにすると実務の図面がほぼ全部アップロードできない。
+      // 人が見る名前（file.name）は別に持っていって、画面にはそちらを出す。
+      const ext = (file.name.match(/\.[A-Za-z0-9]+$/)?.[0] ?? ".pdf").toLowerCase();
+      // 日本語だけの名前だと空になるので、短すぎたら drawing に落とす
+      const stem = file.name.replace(/\.[^.]+$/, "").replace(/[^\w.\-]/g, "").slice(0, 24);
+      const asciiStem = stem.replace(/^[_\-.]+|[_\-.]+$/g, "") || "drawing";
+      const path = `${orgSlug}/${stamp}_${Date.now()}_${asciiStem}${ext}`;
       const sb = supabaseBrowser();
       const { error: upErr } = await sb.storage
         .from("drawings")
@@ -65,7 +72,12 @@ export default function Workbench({
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ storagePath: path, projectSlug, title: title.trim() }),
+        body: JSON.stringify({
+          storagePath: path,
+          projectSlug,
+          title: title.trim(),
+          fileName: file.name, // 画面に出すのは元の日本語のファイル名
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "拾い出しに失敗しました");

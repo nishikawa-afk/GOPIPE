@@ -134,3 +134,31 @@ def test_ensure_org_does_not_overwrite_existing_name(monkeypatch):
     monkeypatch.setattr(store, "_req", fake_req)
     assert store.ensure_org("haruki", "haruki") == "org-9"
     assert [m for m, _p, _b in calls] == ["GET"]
+
+
+def test_drawing_keeps_human_file_name(monkeypatch):
+    """置き場所は半角英数でも、人が見る名前は元のまま残すこと。
+
+    Supabase Storage は日本語のキーを Invalid key で弾く。だからキーは英数に
+    落とすが、それをそのまま画面に出すと自分が上げた図面を判別できなくなる。
+    """
+    seen = {}
+
+    def fake_req(method, path, *, body=None, prefer="", params=""):
+        if path == "organizations":
+            return [{"id": "org-1"}]
+        if path == "projects":
+            return [{"id": "proj-1"}]
+        if path == "drawings":
+            seen.update(body[0])
+            return [{"id": "draw-1"}]
+        return None
+
+    monkeypatch.setattr(store, "_req", fake_req)
+    store.persist_takeoff(
+        org_slug="haruki", org_name="株式会社ハルキ", project_slug="p", title="T",
+        items=[TakeoffItem(page=1, name="給水管", quantity=1, unit="m")],
+        source_pdf_path="haruki/2026-07-26_1_drawing.pdf",
+        file_name="中央ビル改修_1F給排水.pdf",
+    )
+    assert seen["file_name"] == "中央ビル改修_1F給排水.pdf"

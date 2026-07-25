@@ -201,6 +201,7 @@ async def takeoff(
     project_slug: str = Form("takeoff"),
     title: str = Form(""),
     storage_path: str = Form(""),
+    file_name: str = Form(""),
     file: UploadFile | None = File(None),
     x_gopipe_key: str | None = Header(default=None),
 ):
@@ -220,6 +221,7 @@ async def takeoff(
                     org_slug=org_slug, org_name=org_slug,
                     project_slug=project_slug, title=title, items=result.items,
                     source_pdf_path=storage_path or None,
+                    file_name=file_name or None,
                     warnings=getattr(result, "failures", None),
                 )
             except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
