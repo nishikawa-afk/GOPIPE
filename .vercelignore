@@ -20,3 +20,4 @@ supabase/
 .env.local
 .secrets.local
 .git/
+web/
