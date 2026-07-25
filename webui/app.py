@@ -100,7 +100,33 @@ st.markdown(
 @keyframes gpPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(245,147,58,.55));}50%{filter:drop-shadow(0 0 22px rgba(245,147,58,1));}}
 .gp-label{font-family:'Zen Kaku Gothic New',sans-serif;font-size:13px;fill:#cfe3ff;}
 .gp-label.f{fill:#ffd9a8;font-weight:700;}
+/* ---- 起動スプラッシュ（コールドスタートの暗転対策・CSSのみで自動フェード） ---- */
+.gp-splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:radial-gradient(900px 600px at 50% 30%,rgba(34,211,238,.12),transparent 60%),linear-gradient(180deg,#0A1020,#0a0f1f);
+  animation:gpSplash 1.4s ease forwards;pointer-events:none;}
+@keyframes gpSplash{0%,50%{opacity:1;}100%{opacity:0;visibility:hidden;}}
+.gp-splash .l{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(2.4rem,7vw,3.6rem);letter-spacing:.12em;
+  background:linear-gradient(92deg,#eaffff,#6fe9ff 40%,#ffb259);-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:gpSplashPulse 1s ease-in-out infinite;}
+.gp-splash .s{font-family:'Zen Kaku Gothic New',sans-serif;color:#8aa0c8;font-size:.85rem;letter-spacing:.25em;}
+@keyframes gpSplashPulse{0%,100%{filter:drop-shadow(0 0 8px rgba(34,211,238,.4));}50%{filter:drop-shadow(0 0 26px rgba(34,211,238,.9));}}
+/* ---- モバイル最適化（現場・経営者がスマホで見る前提） ---- */
+@media (max-width:640px){
+  .block-container{padding-left:.55rem;padding-right:.55rem;padding-top:1.2rem;}
+  .gp-hero{padding:18px 16px 8px;}
+  .gp-title{font-size:2.4rem;}
+  [data-testid="column"]{width:100%!important;flex:1 1 100%!important;min-width:100%!important;}
+  [data-testid="stMetric"]{text-align:center;border:1px solid rgba(34,211,238,.18);border-radius:12px;padding:8px 4px;margin-bottom:6px;background:rgba(17,26,51,.5);}
+  [data-testid="stDownloadButton"] button,.stButton>button{width:100%!important;}
+}
 </style>""",
+    unsafe_allow_html=True,
+)
+
+# 起動スプラッシュ（早期に描画 → CSSアニメで自動フェードアウト）
+st.markdown(
+    '<div class="gp-splash"><div class="l">GOPIPE</div>'
+    '<div class="s">LOADING · PIPING AI</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -110,6 +136,35 @@ def _run_takeoff(pdf_path: Path, provider: str, *, grid: int = 1, two_pass: bool
     from gopipe_takeoff import run_takeoff
 
     return run_takeoff(str(pdf_path), str(OUT_DIR), grid=grid, two_pass=two_pass)
+
+
+def _conf_badge(c: float) -> str:
+    """信頼度を色付きバッジ文字列に（赤<0.7 / 黄<0.85 / 緑）。"""
+    dot = "🔴" if c < 0.7 else ("🟡" if c < 0.85 else "🟢")
+    return f"{dot} {c:.2f}"
+
+
+def _build_deliverables_zip(_items) -> bytes:
+    """拾い出し・見積サマリ・申請書を1つのZIPにまとめて bytes を返す。"""
+    import io
+    import zipfile
+
+    from gopipe_takeoff.application import ProjectInfo, build_application_markdown
+    from gopipe_takeoff.estimate import build_estimate as _zbe
+    from gopipe_takeoff.excel_writer import write_excel
+    from gopipe_takeoff.pricer import Pricer as _zpr
+
+    _tmpx = Path(tempfile.gettempdir()) / "gopipe_toridashi.xlsx"
+    write_excel(_items, _tmpx)
+    _zest = _zbe(_items, _zpr.from_yaml(_kpath("unit_prices.yaml")))
+    _zmd = build_application_markdown(_items, ProjectInfo(municipality="東京都水道局"))
+    _zsum = f"GOPIPE 見積サマリ\n小計(税抜): ¥{_zest.subtotal:,}\n合計(税込): ¥{_zest.total:,}\n"
+    _zbuf = io.BytesIO()
+    with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _z:
+        _z.write(_tmpx, "拾い出し表.xlsx")
+        _z.writestr("見積サマリ.txt", _zsum)
+        _z.writestr("給水装置工事申込書.md", _zmd)
+    return _zbuf.getvalue()
 
 
 # ----------------------------- サイドバー -----------------------------
@@ -442,26 +497,8 @@ st.success(f"{len(items)} 件を抽出・系統別に分類しました。")
 
 with st.expander("📦 成果物を一括ダウンロード（ZIP：拾い出し・見積・申請）"):
     if st.button("ZIPを生成", key="zip_gen"):
-        import io
-        import zipfile
-
-        from gopipe_takeoff.application import ProjectInfo, build_application_markdown
-        from gopipe_takeoff.estimate import build_estimate as _zbe
-        from gopipe_takeoff.excel_writer import write_excel
-        from gopipe_takeoff.pricer import Pricer as _zpr
-
-        _tmpx = Path(tempfile.gettempdir()) / "gopipe_toridashi.xlsx"
-        write_excel(items, _tmpx)
-        _zest = _zbe(items, _zpr.from_yaml(_kpath("unit_prices.yaml")))
-        _zmd = build_application_markdown(items, ProjectInfo(municipality="東京都水道局"))
-        _zsum = f"GOPIPE 見積サマリ\n小計(税抜): ¥{_zest.subtotal:,}\n合計(税込): ¥{_zest.total:,}\n"
-        _zbuf = io.BytesIO()
-        with zipfile.ZipFile(_zbuf, "w", zipfile.ZIP_DEFLATED) as _z:
-            _z.write(_tmpx, "拾い出し表.xlsx")
-            _z.writestr("見積サマリ.txt", _zsum)
-            _z.writestr("給水装置工事申込書.md", _zmd)
         st.download_button(
-            "⬇ GOPIPE成果物.zip をダウンロード", _zbuf.getvalue(),
+            "⬇ GOPIPE成果物.zip をダウンロード", _build_deliverables_zip(items),
             file_name="GOPIPE成果物.zip", mime="application/zip", key="zip_dl",
         )
         st.success("ZIPを生成しました。下のボタンで保存できます。")
@@ -478,28 +515,45 @@ with tab_take:
     from gopipe_takeoff.models import TakeoffItem as _TI
     from gopipe_takeoff.pricer import Pricer as _pr
 
+    def _is_warn(it) -> bool:
+        return it.confidence < 0.7 or bool(_vchk.check_item(it))
+
     _low = [it for it in items if it.confidence < 0.7]
     _flags = _vchk.check(items)
+    _warn_items = [it for it in items if _is_warn(it)]
     _c1, _c2, _c3 = st.columns(3)
     _c1.metric("抽出 件数", len(items))
     _c2.metric("要確認 (信頼度<0.7)", len(_low))
     _c3.metric("整合チェック フラグ", len(_flags))
     st.caption(
-        "AIの下書きです。数量・名称・仕様はその場で修正できます（⚠＝要確認）。"
+        "AIの下書きです。数量・名称・仕様はその場で修正できます。"
+        "🔴＝要確認（信頼度<0.7 か 整合チェック該当）で、要確認の行を表の上にまとめています。"
         "修正→『🔄 反映して再見積』→ 確定したら『✅ 学習に記録』で次回の精度に還元されます。"
     )
+    # 要確認(🔴)を上に集約 → その中で信頼度の低い順。整合チェックの理由も前寄せで表示。
+    _sorted_items = sorted(items, key=lambda x: (0 if _is_warn(x) else 1, x.confidence))
     _rev_src = pd.DataFrame(
         [
-            {"⚠": "⚠" if (it.confidence < 0.7 or _vchk.check_item(it)) else "",
-             "カテゴリ": it.category or "", "名称": it.name, "仕様": it.spec or "",
-             "場所": it.location or "", "数量": float(it.quantity), "単位": it.unit or "",
-             "信頼度": round(it.confidence, 2), "チェック": " / ".join(_vchk.check_item(it))}
-            for it in sorted(items, key=lambda x: x.confidence)
+            {"⚠": "🔴" if _is_warn(it) else "",
+             "確度": _conf_badge(it.confidence),
+             "チェック": " / ".join(_vchk.check_item(it)),
+             "名称": it.name, "数量": float(it.quantity), "単位": it.unit or "",
+             "カテゴリ": it.category or "", "仕様": it.spec or "", "場所": it.location or ""}
+            for it in _sorted_items
         ]
     )
     _edited = st.data_editor(
         _rev_src, use_container_width=True, hide_index=True, num_rows="dynamic",
-        key="review_tbl", disabled=["⚠", "信頼度", "チェック"],
+        key="review_tbl", disabled=["⚠", "確度", "チェック"],
+        column_config={
+            "⚠": st.column_config.TextColumn("⚠", width="small", help="🔴＝要確認"),
+            "確度": st.column_config.TextColumn("確度", width="small",
+                                              help="🔴<0.7 / 🟡<0.85 / 🟢 それ以上"),
+            "チェック": st.column_config.TextColumn("チェック", width="medium",
+                                                help="整合チェックの指摘（数量0・単位×カテゴリ不一致・外れ値・重複）"),
+            "名称": st.column_config.TextColumn("名称", width="large"),
+            "数量": st.column_config.NumberColumn("数量", width="small"),
+        },
     )
     _b1, _b2 = st.columns(2)
     if _b1.button("🔄 反映して再見積", key="review_reest", use_container_width=True):
@@ -508,7 +562,7 @@ with tab_take:
             _TI(page=1, name=str(r.get("名称") or "").strip(), spec=(r.get("仕様") or None),
                 quantity=float(r.get("数量") or 0), unit=str(r.get("単位") or ""),
                 location=(r.get("場所") or None), category=(r.get("カテゴリ") or None),
-                confidence=float(r.get("信頼度") or 1.0))
+                confidence=1.0)  # 人が確認・修正した行は確定扱い
             for _, r in _e.iterrows() if str(r.get("名称") or "").strip()
         ]
         st.session_state["items"] = [it.model_dump() for it in _rev]
@@ -544,9 +598,22 @@ with tab_take:
                         _learned += 1
                 except Exception:  # noqa: BLE001
                     pass
-        st.success(f"{_n} 件を記録・うち {_learned} 件を『学習の堀』に反映（次回、同じ表記を自動で正しく分類）。")
         if _learned:
+            st.success(
+                f"{_n} 件を確定・うち {_learned} 件を『学習の堀』に反映しました"
+                "（次回、同じ表記を自動で正しく分類します）。"
+            )
             st.balloons()
+        else:
+            st.success(
+                f"{_n} 件を確定しました（修正がなかったため新規の学習はなし＝分類は全件そのまま確定）。"
+            )
+        # 確定した内容の“出口”をこの場でも提供（ボタン直後に成果物ZIP）
+        st.download_button(
+            "📦 この内容で成果物ZIPをダウンロード", _build_deliverables_zip(items),
+            file_name="GOPIPE成果物.zip", mime="application/zip",
+            key="zip_after_confirm", use_container_width=True,
+        )
 
 # ----------------------------- 図面プレビュー（AIマーカー） -----------------------------
 with tab_view:

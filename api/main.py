@@ -10,12 +10,13 @@
 from __future__ import annotations
 
 import datetime
+import hmac
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,8 +59,35 @@ def _items_json(items) -> list[dict]:
     ]
 
 
-def _takeoff(provider: str, file: UploadFile | None):
-    os.environ["GOPIPE_LLM_PROVIDER"] = provider or "mock"
+# 無認証で開放してよいプロバイダ（自社の LLM キーを消費しない＝課金されない）。
+# claude / openai は ANTHROPIC_API_KEY 等を消費するので、必ずキーゲートを通す。
+_FREE_PROVIDERS = {"", "mock"}
+
+
+def _require_key(api_key: str | None, what: str) -> None:
+    """課金・書き込みを伴う操作にサーバ側キーを要求する（fail-closed）。
+
+    GOPIPE_API_KEY が未設定なら「誰でも自社キーで Claude を叩ける」状態なので、
+    未設定そのものを 503 で拒否する。mock デモは無認証のまま通す。
+    """
+    expected = os.environ.get("GOPIPE_API_KEY", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{what} は停止中です（サーバ側 GOPIPE_API_KEY 未設定）。mock は利用できます。",
+        )
+    if not api_key or not hmac.compare_digest(api_key, expected):
+        raise HTTPException(
+            status_code=401,
+            detail=f"{what} には x-gopipe-key ヘッダが必要です（provider=mock は不要）。",
+        )
+
+
+def _takeoff(provider: str, file: UploadFile | None, api_key: str | None = None):
+    p = (provider or "mock").strip().lower()
+    if p not in _FREE_PROVIDERS:
+        _require_key(api_key, f"provider={p}")
+    os.environ["GOPIPE_LLM_PROVIDER"] = p or "mock"
     from gopipe_takeoff import run_takeoff
 
     pdf = _save_upload(file)
@@ -72,6 +100,16 @@ def root():
     from fastapi.responses import RedirectResponse
 
     return RedirectResponse(url="/docs")
+
+
+@app.get("/share", include_in_schema=False)
+def share():
+    # 社員・クライアント共有用の公開ハブ（マンガ・使い方動画・デモ導線・共有文）。
+    # 自己完結HTML。ログイン不要で誰でも閲覧できるよう素のHTMLResponseで返す。
+    from fastapi.responses import HTMLResponse
+
+    html = (Path(__file__).resolve().parent / "share.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
 
 
 @app.get("/health")
@@ -95,10 +133,13 @@ async def takeoff(
     project_slug: str = Form("takeoff"),
     title: str = Form(""),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
     if persist:
+        # 書き込みは service_role（RLSバイパス）で走る。無認証で開けない。
+        _require_key(x_gopipe_key, "persist=true")
         from gopipe_takeoff import store
 
         if store.is_enabled():
@@ -119,11 +160,12 @@ async def estimate(
     provider: str = Form("mock"),
     overhead: float = Form(0.10),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.estimate import build_estimate
     from gopipe_takeoff.pricer import Pricer
 
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     pricer = Pricer.from_yaml(_kpath("unit_prices.yaml"))
     est = build_estimate(result.items, pricer, overhead_rate=overhead)
     return {
@@ -154,10 +196,11 @@ async def application(
     address: str = Form(""),
     work_type: str = Form("改造"),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.application import ProjectInfo, build_application_markdown
 
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     proj = ProjectInfo(
         municipality=municipality, contractor_name=contractor_name,
         contractor_number=contractor_number, chief_engineer=chief_engineer,
@@ -172,6 +215,7 @@ async def maintenance(
     installed_year: int = Form(2008),
     current_year: int = Form(0),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.maintenance import (
         build_ledger,
@@ -181,7 +225,7 @@ async def maintenance(
     )
 
     cy = current_year or datetime.date.today().year
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     table, plans = load_service_life()
     ledger = build_ledger(result.items, installed_year, table)
     plan = recommend_plan(ledger, plans, current_year=cy)
