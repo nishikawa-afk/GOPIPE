@@ -28,5 +28,15 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // 公開デモ(/)と静的ファイルは素通り。認証が要る画面とAPIだけ通す。
-  matcher: ["/app/:path*", "/login", "/api/run", "/api/learn", "/api/signup"],
+  // 新しいAPIを足したらここにも足すこと。忘れるとセッションが更新されず、
+  // 週1しか開かない人がある日突然ログインを失う。
+  matcher: [
+    "/app/:path*",
+    "/login",
+    "/api/run",
+    "/api/learn",
+    "/api/items",
+    "/api/items/rows",
+    "/api/signup",
+  ],
 };

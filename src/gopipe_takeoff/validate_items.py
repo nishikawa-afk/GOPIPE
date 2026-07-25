@@ -83,6 +83,62 @@ def check(items: list[TakeoffItem]) -> dict[int, list[str]]:
                 issues.append(f"二重計上の疑い（行{by_qty[qty_key] + 1}と同じ数量）")
             else:
                 by_qty.setdefault(qty_key, i)
+
+        # 名前の書き方が違っても同じ品物のことがある。
+        #   図面から: 「給水管(VP)」 spec=DN20
+        #   機器表から: 「GP-1 給水管」 spec=VP DN20 GP-1
+        # 数量・単位・ページが同じで、仕様が包含関係なら二重計上を疑う。
+        # 見積の数量が倍になる事故は、名前が違うという理由で見逃してはいけない。
+        if not any("重複" in s or "二重計上" in s for s in issues) and (it.quantity or 0) > 0:
+            for j in range(i):
+                other = items[j]
+                if (
+                    other.page == it.page
+                    and float(other.quantity or 0) == float(it.quantity or 0)
+                    and (other.unit or "") == (it.unit or "")
+                    and (
+                        _spec_overlap(other.spec, it.spec)
+                        or _name_overlap(other.name, it.name)
+                    )
+                ):
+                    issues.append(f"二重計上の疑い（行{j + 1}と同じ品物の可能性）")
+                    break
         if issues:
             out[i] = issues
     return out
+
+
+def _spec_overlap(a: str | None, b: str | None) -> bool:
+    """仕様欄が実質同じものを指しているか（「DN20」⊂「VP DN20 GP-1」）。"""
+    na = (a or "").replace(" ", "").upper()
+    nb = (b or "").replace(" ", "").upper()
+    if len(na) < 3 or len(nb) < 3:
+        return False
+    return na in nb or nb in na
+
+
+def _name_core(s: str | None) -> str:
+    """名称から図面記号と括弧書きを落として「芯」だけにする。
+
+    「GP-1   給水管」→「給水管」 / 「給水管(VP)」→「給水管」
+    ここを甘くして共通2文字で判定すると、給水管と排水管が「水管」で一致して
+    誤報する。誤報が増えると本物の二重計上がその中に埋もれるので、芯で比べる。
+    """
+    import re as _re
+
+    t = _re.sub(r"[（(].*?[)）]", "", s or "")          # 括弧書き
+    t = _re.sub(r"\b[A-Za-z]{1,4}[-_]?\d{1,3}\b", "", t)  # 図面記号 GP-1 / FT1
+    return _re.sub(r"[^\wぁ-んァ-ヶ一-龠]", "", t)
+
+
+def _name_overlap(a: str | None, b: str | None) -> bool:
+    """名称が同じ品物を指していそうか（芯が一致するか）。
+
+    図面からは「給水管(VP)」、機器表からは「GP-1 給水管」のように、同じ管が
+    違う書き方で2行に分かれることがある。ページ・数量・単位が既に一致している
+    行同士にだけ使う。
+    """
+    ca, cb = _name_core(a), _name_core(b)
+    if len(ca) < 2 or len(cb) < 2:
+        return False
+    return ca == cb or ca in cb or cb in ca

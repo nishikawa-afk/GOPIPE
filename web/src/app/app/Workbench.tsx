@@ -25,6 +25,7 @@ export default function Workbench({
   const [phase, setPhase] = useState<Phase>("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   const warnCount = useMemo(
     () => (rows ?? []).filter((r) => needsReview(r)).length,
@@ -69,8 +70,12 @@ export default function Workbench({
       setRows(sortForReview(items));
       const saved = data?.persisted?.error
         ? "（案件の保存には失敗しました）"
-        : "案件として保存しました。";
-      setNotice(`${items.length} 件を拾い出しました。${saved}`);
+        : "物件として保存しました。あとから物件一覧で開き直せます。";
+      const warn = Array.isArray(data?.warnings) && data.warnings.length
+        ? ` ⚠️ ${data.warnings.join(" / ")}`
+        : "";
+      setProjectId(data?.persisted?.project_id ?? null);
+      setNotice(`${items.length} 件を拾い出しました。${saved}${warn}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -188,7 +193,13 @@ export default function Workbench({
           <p className="m-0 text-[20px] font-black">{orgName}</p>
         </div>
         <div className="text-right text-[12.5px] text-[var(--mut)]">
-          <p className="m-0">{email}</p>
+          <p className="m-0">
+            <a href="/app/projects" className="font-bold text-[var(--cyan)] hover:underline">
+              物件一覧
+            </a>
+            <span className="mx-2 opacity-40">|</span>
+            {email}
+          </p>
           <button onClick={logout} className="font-bold text-[var(--cyan)] hover:underline">
             ログアウト
           </button>
@@ -262,6 +273,14 @@ export default function Workbench({
             <ReviewTable rows={rows} onEdit={edit} />
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
+              {projectId && (
+                <a
+                  href={`/app/projects/${projectId}`}
+                  className="rounded-[11px] border border-[var(--line)] px-5 py-3 text-[15px] font-bold text-[var(--ink)] hover:border-[var(--cyan)]"
+                >
+                  この物件を開く（続きから直せます）
+                </a>
+              )}
               <button
                 onClick={learn}
                 disabled={busy || edited.length === 0}

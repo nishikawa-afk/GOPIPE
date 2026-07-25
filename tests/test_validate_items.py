@@ -64,3 +64,47 @@ def test_double_count_across_different_spec_wording():
     flags = check(items)
     assert 1 in flags and any("二重計上" in s for s in flags[1])
     assert 2 not in flags
+
+
+def test_double_count_detected_across_different_names():
+    """名前の書き方が違っても、同じ品物の二重計上は見逃さないこと。
+
+    図面から「給水管(VP)/DN20」、機器表から「GP-1 給水管/VP DN20 GP-1」が
+    それぞれ出ると、名前が違うので名前ベースの重複チェックをすり抜ける。
+    見積の数量が倍になるので、仕様の包含関係で拾う。
+    """
+    from gopipe_takeoff.validate_items import check
+    from gopipe_takeoff.models import TakeoffItem
+
+    items = [
+        TakeoffItem(page=1, name="給水管(VP)", spec="DN20", quantity=28, unit="m", category="給水"),
+        TakeoffItem(page=1, name="GP-1 給水管", spec="VP DN20 GP-1", quantity=28, unit="m", category="給水"),
+        TakeoffItem(page=1, name="排水管", spec="DN75", quantity=22, unit="m", category="排水"),
+    ]
+    flags = check(items)
+    assert 1 in flags and any("二重計上" in s for s in flags[1])
+    assert 2 not in flags
+
+
+def test_same_item_on_different_floors_is_not_flagged():
+    """1Fと2Fの同じ弁を二重計上と誤報しないこと（本物の重複が埋もれる）。"""
+    from gopipe_takeoff.validate_items import check
+    from gopipe_takeoff.models import TakeoffItem
+
+    items = [
+        TakeoffItem(page=1, name="仕切弁", spec="DN20", quantity=6, unit="個",
+                    category="弁類", location="1F 給水系統"),
+        TakeoffItem(page=2, name="仕切弁", spec="DN20", quantity=6, unit="個",
+                    category="弁類", location="2F 給水系統"),
+    ]
+    assert check(items) == {}
+
+
+def test_name_core_comparison_avoids_false_positives():
+    """芯で比べる。共通2文字で判定すると給水管と排水管が誤報する。"""
+    from gopipe_takeoff.validate_items import _name_overlap
+
+    assert _name_overlap("給水管(VP)", "GP-1   給水管")
+    assert _name_overlap("継手", "FT-1   継手")
+    assert not _name_overlap("給水管", "排水管")
+    assert not _name_overlap("給水管(VP)", "給湯管(VP)")

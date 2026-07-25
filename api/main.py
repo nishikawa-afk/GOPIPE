@@ -31,9 +31,19 @@ from gopipe_takeoff.locale import resolve as _kpath  # noqa: E402
 OUT = Path(tempfile.gettempdir()) / "gopipe_out"
 
 app = FastAPI(title="GOPIPE API", version="0.1.0")
+# 画面は同一オリジンの Next.js 中継を通るので、ブラウザから直接叩く必要はない。
+# "*" のままだと、どのサイトからでも本番APIを叩けてしまう。
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "GOPIPE_ALLOWED_ORIGINS",
+        "https://gopipe-web.vercel.app,https://gopipe.vercel.app,http://localhost:3210",
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番では Vercel ドメインに絞る
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -210,6 +220,7 @@ async def takeoff(
                     org_slug=org_slug, org_name=org_slug,
                     project_slug=project_slug, title=title, items=result.items,
                     source_pdf_path=storage_path or None,
+                    warnings=getattr(result, "failures", None),
                 )
             except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
                 resp["persisted"] = {"error": str(e)}

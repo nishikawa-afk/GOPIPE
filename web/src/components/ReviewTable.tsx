@@ -3,7 +3,15 @@
 import { confidenceLevel, needsReview, type TakeoffItem } from "@/lib/gopipe";
 
 /** base = AIが出した直後の姿。学習に「直す前 → 直した後」を渡すために手放さない。 */
-export type Row = TakeoffItem & { id: number; edited: boolean; base: TakeoffItem };
+export type Row = TakeoffItem & {
+  id: number;
+  edited: boolean;
+  base: TakeoffItem;
+  /** 台帳(takeoff_items)の行ID。保存済みの案件を開いたときに入る */
+  dbId?: string;
+  /** 保存の状態。画面に「残った」ことを見せるため */
+  saveState?: "idle" | "saving" | "saved" | "error";
+};
 
 const BADGE: Record<string, { mark: string; label: string }> = {
   low: { mark: "🔴", label: "要確認" },
@@ -28,9 +36,12 @@ const cell =
 export function ReviewTable({
   rows,
   onEdit,
+  onRemove,
 }: {
   rows: Row[];
   onEdit: (id: number, patch: Partial<Row>) => void;
+  /** 渡すと行を消せるようになる（拾い過ぎ・二重計上の始末） */
+  onRemove?: (id: number) => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-[13px] border border-[var(--line)] bg-[var(--navy2)]">
@@ -45,6 +56,7 @@ export function ReviewTable({
             <th className="px-3 py-3 font-bold">単位</th>
             <th className="px-3 py-3 font-bold">カテゴリ</th>
             <th className="px-3 py-3 font-bold">場所</th>
+            {onRemove && <th className="px-2 py-3" />}
           </tr>
         </thead>
         <tbody>
@@ -58,9 +70,27 @@ export function ReviewTable({
               >
                 <td className="px-3 py-2 whitespace-nowrap">
                   <span
-                    title={r.edited ? "あなたが直した行" : flagged ? "要確認" : badge.label}
+                    title={
+                      r.saveState === "saving"
+                        ? "保存中"
+                        : r.saveState === "error"
+                          ? "保存できませんでした"
+                          : r.edited
+                            ? "あなたが直した行"
+                            : flagged
+                              ? "要確認"
+                              : badge.label
+                    }
                   >
-                    {r.edited ? "✅" : flagged ? "🔴" : badge.mark}
+                    {r.saveState === "saving"
+                      ? "⏳"
+                      : r.saveState === "error"
+                        ? "⚠️"
+                        : r.edited
+                          ? "✅"
+                          : flagged
+                            ? "🔴"
+                            : badge.mark}
                   </span>
                 </td>
                 <td className="px-3 py-2 text-[12.5px] leading-snug text-[var(--red)]">
@@ -103,9 +133,24 @@ export function ReviewTable({
                     className={`${cell} w-[110px] text-[var(--mut)] focus:text-[var(--ink)]`}
                   />
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--mut)]">
-                  {r.location ?? ""}
+                <td className="px-3 py-2">
+                  <input
+                    value={r.location ?? ""}
+                    onChange={(e) => onEdit(r.id, { location: e.target.value })}
+                    className={`${cell} w-[130px] text-[var(--mut)] focus:text-[var(--ink)]`}
+                  />
                 </td>
+                {onRemove && (
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <button
+                      onClick={() => onRemove(r.id)}
+                      title="この行を消す（二重計上や拾い過ぎのとき）"
+                      className="rounded px-2 py-1 text-[13px] text-[var(--mut)] hover:bg-[rgba(215,38,30,0.12)] hover:text-[var(--red)]"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}

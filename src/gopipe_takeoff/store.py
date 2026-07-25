@@ -94,32 +94,101 @@ def upsert_project(org_id: str, slug: str, title: str, item_count: int,
     return rows[0]["id"]
 
 
-def replace_takeoff_items(project_id: str, org_id: str, items: list[TakeoffItem]) -> int:
-    """その project の既存 takeoff_items を全削除→再挿入（再拾い出しで上書き）。"""
-    _req("DELETE", "takeoff_items", params=f"?project_id=eq.{project_id}")
-    if items:
-        body = [
-            {
-                "project_id": project_id, "org_id": org_id,
-                "category": it.category, "name": it.name, "spec": it.spec,
-                "location": it.location, "quantity": it.quantity,
-                "unit": it.unit, "confidence": it.confidence,
-            }
-            for it in items
-        ]
-        _req("POST", "takeoff_items", body=body, prefer="return=minimal")
+def create_drawing(
+    org_id: str, project_id: str, storage_path: str, *,
+    file_name: str = "", page_count: int | None = None, warnings: list[str] | None = None,
+) -> str:
+    """図面を1枚登録して drawing_id を返す。明細はこの図面にぶら下げる。"""
+    rows = _req(
+        "POST", "drawings",
+        body=[{
+            "org_id": org_id, "project_id": project_id, "storage_path": storage_path,
+            "file_name": file_name or storage_path.rsplit("/", 1)[-1],
+            "page_count": page_count,
+            "status": "partial" if warnings else "done",
+            "warnings": warnings or [],
+        }],
+        prefer="return=representation",
+    )
+    return rows[0]["id"]
+
+
+def replace_takeoff_items(
+    project_id: str, org_id: str, items: list[TakeoffItem],
+    drawing_id: str | None = None,
+) -> int:
+    """明細を保存する。
+
+    drawing_id があるときは **その図面ぶんだけ** 置き換える。案件単位で全消しすると、
+    同じ物件に2枚目の図面を流した瞬間に1枚目の拾い出し（と、そこに入っていた
+    人の修正）が警告なく消える。
+    さらに 0件のときは削除しない。AI側の一時障害で0件が返ったときに、
+    前回の結果まで道連れにしないため。
+    """
+    if not items:
+        return 0
+    if drawing_id:
+        _req("DELETE", "takeoff_items", params=f"?drawing_id=eq.{drawing_id}")
+    else:
+        # 旧経路（図面を作らない呼び出し）。図面未指定の行だけを入れ替える。
+        _req(
+            "DELETE", "takeoff_items",
+            params=f"?project_id=eq.{project_id}&drawing_id=is.null",
+        )
+    body = [
+        {
+            "project_id": project_id, "org_id": org_id, "drawing_id": drawing_id,
+            "category": it.category, "name": it.name, "spec": it.spec,
+            "location": it.location, "quantity": it.quantity,
+            "unit": it.unit, "confidence": it.confidence,
+            "page": it.page, "source": it.source,
+            "raw_name": it.raw_name or it.name, "qty_vision": it.qty_vision,
+            "status": "ai_draft",
+        }
+        for it in items
+    ]
+    _req("POST", "takeoff_items", body=body, prefer="return=minimal")
     return len(items)
 
 
 def persist_takeoff(
     *, org_slug: str, org_name: str, project_slug: str, title: str,
     items: list[TakeoffItem], source_pdf_path: str | None = None,
+    warnings: list[str] | None = None,
 ) -> dict:
-    """org → project → takeoff_items を保存し、id 群と件数を返す。"""
+    """org → project → drawing → takeoff_items を保存し、id 群と件数を返す。"""
     org_id = ensure_org(org_slug, org_name)
     project_id = upsert_project(org_id, project_slug, title, len(items), source_pdf_path)
-    n = replace_takeoff_items(project_id, org_id, items)
-    return {"org_id": org_id, "project_id": project_id, "items": n}
+    drawing_id = None
+    if source_pdf_path:
+        drawing_id = create_drawing(
+            org_id, project_id, source_pdf_path,
+            page_count=max((it.page for it in items), default=None),
+            warnings=warnings,
+        )
+    n = replace_takeoff_items(project_id, org_id, items, drawing_id)
+    total = _project_item_count(project_id)
+    if total is not None:
+        # 一覧に出るのは「その物件の合計」。直近1回の件数を出すと、
+        # 2枚目を足したのに件数が減ったように見える。
+        _req(
+            "PATCH", "projects",
+            body={"item_count": total, "updated_at": "now()"},
+            params=f"?id=eq.{project_id}", prefer="return=minimal",
+        )
+    return {
+        "org_id": org_id, "project_id": project_id,
+        "drawing_id": drawing_id, "items": n, "project_items": total,
+    }
+
+
+def _project_item_count(project_id: str) -> int | None:
+    """その案件の明細総数（図面をまたいだ合計）。"""
+    try:
+        rows = _req("GET", "takeoff_items", params=f"?project_id=eq.{project_id}&select=id")
+        return len(rows or [])
+    except Exception:  # noqa: BLE001  件数の更新失敗で保存自体は落とさない
+        return None
 
 
 def record_learned_alias(
