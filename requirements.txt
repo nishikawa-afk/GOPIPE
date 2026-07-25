@@ -5,6 +5,10 @@ fastapi>=0.110.0
 python-multipart>=0.0.9
 anthropic>=0.40.0
 pymupdf>=1.24.0
+# スキャン図・手書き図の前処理（自動コントラスト＋鮮鋭化）に必要。
+# これが無いと pdf_loader._enhance_png が except に落ちて原画像のまま進み、
+# 「手書き向けの対策が本番だけ効いていない」が静かに起きる。
+pillow>=10.3.0
 openpyxl>=3.1.2
 pydantic>=2.7.0
 pyyaml>=6.0.1

@@ -50,7 +50,11 @@ export default function Workbench({
       const sb = supabaseBrowser();
       const { error: upErr } = await sb.storage
         .from("drawings")
-        .upload(path, file, { contentType: "application/pdf", upsert: false });
+        // 実際の種類で上げる。PDF固定にすると写真が壊れる
+        .upload(path, file, {
+          contentType: file.type || "application/pdf",
+          upsert: false,
+        });
       if (upErr) throw new Error(`図面のアップロードに失敗しました: ${upErr.message}`);
 
       setPhase("run");
@@ -209,16 +213,18 @@ export default function Workbench({
       <section className="py-9">
         <h1 className="mt-0 mb-1 text-[22px] font-black">設備図から拾い出す</h1>
         <p className="mt-0 mb-6 text-[14px] text-[var(--mut)]">
-          図面のPDFを選んで実行すると、AIが下書きを作ります。直した内容は会社の辞書に覚えさせられます。
+          設備図（PDF・写真）を選んで実行すると、AIが下書きを作ります。直した内容は会社の辞書に覚えさせられます。
+          手書きの図面も読めますが、印字より精度は落ちます（数字は必ずご確認ください）。
         </p>
 
         <div className="flex flex-col gap-3 rounded-[13px] border border-[var(--line)] bg-[var(--panel)] p-5 sm:flex-row sm:items-center">
           <label className="cursor-pointer rounded-[10px] border border-dashed border-[var(--cyan)] px-5 py-2.5 text-[14px] font-bold whitespace-nowrap text-[var(--cyan)] hover:bg-[rgba(86,204,242,0.08)]">
-            {file ? `📄 ${file.name}` : "設備図のPDFを選ぶ"}
+            {file ? `📄 ${file.name}` : "設備図を選ぶ（PDF・写真）"}
             <input
               ref={fileRef}
               type="file"
-              accept="application/pdf"
+              // 手書き図面をスマホで撮った写真も受ける。現場にPDFが無いことは普通にある。
+              accept="application/pdf,image/jpeg,image/png,image/heic"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="hidden"
             />

@@ -643,13 +643,24 @@ async def inspect(
         text_chars += len(doc[i].get_text() or "")
     doc.close()
 
+    # 前処理（自動コントラスト＋鮮鋭化）が実際に効く環境かを見る。
+    # 入っていないと手書き・スキャンの読み取りが素の画像のまま進むので、
+    # 「対策したつもりで効いていない」を作らないため明示する。
+    try:
+        import PIL  # noqa: F401
+        enhance_available = True
+    except Exception:  # noqa: BLE001
+        enhance_available = False
+
     has_text = text_chars >= 200
     if has_text:
         kind, advice = "cad", "テキスト層あり。機器表の数量を確定情報として使えます。"
     else:
         kind, advice = "scan", (
-            "テキスト層がありません（スキャン図面の可能性）。"
-            "数量は画像認識だけに頼るため精度が落ちます。CAD出力のPDFがあればそちらを推奨します。"
+            "文字データがありません（スキャン図面・手書き図面・写真の可能性）。"
+            "この場合、機器表の数量で裏を取れないため、数量はAIの読み取りだけが頼りになります。"
+            "特に手書きの数字は読み違えが起きやすいので、表の数量は必ずご確認ください。"
+            "CAD出力のPDFが用意できるなら、そちらの方が確実です。"
         )
     return {
         "pages": pages,
@@ -657,6 +668,7 @@ async def inspect(
         "has_text_layer": has_text,
         "text_chars": text_chars,
         "advice": advice,
+        "enhance_available": enhance_available,
         # 1ページあたり十数秒〜。300秒の上限に対して危ないかを先に伝える
         "may_time_out": pages > 12,
     }
