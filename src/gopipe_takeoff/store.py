@@ -211,7 +211,7 @@ def record_learned_alias(
         "POST", "learned_aliases",
         body=[{"org_id": org_id, "raw": raw, "canonical": canonical,
                "category": category, "unit": unit, "locale": locale,
-               "hits": hits, "updated_at": "now()"}],
+               "hits": hits, "updated_at": "now()", "revoked_at": None}],
         prefer="resolution=merge-duplicates,return=minimal",
         params="?on_conflict=org_id,locale,raw",
     )
@@ -226,7 +226,7 @@ def load_learned_aliases(org_slug: str, locale: str = "ja") -> dict:
     rows = _req(
         "GET", "learned_aliases",
         params=(
-            f"?org_id=eq.{org_id}&locale=eq.{locale}"
+            f"?org_id=eq.{org_id}&locale=eq.{locale}&revoked_at=is.null"
             "&select=raw,canonical,category,unit,hits"
             "&order=hits.desc,updated_at.desc&limit=2000"
         ),
@@ -264,3 +264,22 @@ def download_drawing(storage_path: str) -> bytes:
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:300]
         raise RuntimeError(f"図面の取得に失敗しました (HTTP {e.code}): {detail}") from None
+
+
+def revoke_learned_alias(org_slug: str, raw: str, locale: str = "ja") -> bool:
+    """覚えさせた言い換えを取り消す（論理削除）。
+
+    物理削除にしないのは、押し間違い1回で会社が育てた資産を永久に失わせないため。
+    同じ raw をもう一度教えれば取り消しは自動で解除される。
+    """
+    org_id = ensure_org(org_slug, org_slug)
+    _req(
+        "PATCH", "learned_aliases",
+        body={"revoked_at": "now()"},
+        params=(
+            f"?org_id=eq.{org_id}&locale=eq.{urllib.parse.quote(locale)}"
+            f"&raw=eq.{urllib.parse.quote(raw)}"
+        ),
+        prefer="return=minimal",
+    )
+    return True

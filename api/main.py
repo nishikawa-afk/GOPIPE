@@ -672,3 +672,20 @@ async def inspect(
         # 1ページあたり十数秒〜。300秒の上限に対して危ないかを先に伝える
         "may_time_out": pages > 12,
     }
+
+
+@app.delete("/learned")
+async def revoke_learned(
+    org_slug: str,
+    raw: str,
+    locale: str = "ja",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """誤って覚えさせた言い換えを取り消す（論理削除・同じ内容を再度教えれば復活）。"""
+    _require_key(x_gopipe_key, "学習の取り消し(/learned)")
+    from gopipe_takeoff import store
+
+    if not store.is_enabled():
+        raise HTTPException(status_code=503, detail="Supabase 未設定")
+    store.revoke_learned_alias(org_slug, raw, locale=locale)
+    return {"ok": True, "raw": raw}

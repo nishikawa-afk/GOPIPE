@@ -202,6 +202,10 @@ export default function Workbench({
               物件一覧
             </a>
             <span className="mx-2 opacity-40">|</span>
+            <a href="/app/dictionary" className="font-bold text-[var(--cyan)] hover:underline">
+              覚えた言い換え
+            </a>
+            <span className="mx-2 opacity-40">|</span>
             {email}
           </p>
           <button onClick={logout} className="font-bold text-[var(--cyan)] hover:underline">
@@ -242,6 +246,18 @@ export default function Workbench({
           >
             {busy ? label : "拾い出しを実行"}
           </button>
+        </div>
+
+        <div className="mt-3">
+          {/* 初めての人が、自分の図面を探さずにその場で試せるようにする。
+              練習で会社の台帳を汚さないよう、物件名に「練習」を入れて使う運用。 */}
+          <a
+            href="/sample/practice-drawing.pdf"
+            download="GoPipe練習用_中央ビル_1F給排水.pdf"
+            className="text-[13px] text-[var(--mut)] underline hover:text-[var(--cyan)]"
+          >
+            はじめての方へ：練習用の設備図をダウンロード
+          </a>
         </div>
 
         {phase === "run" && (

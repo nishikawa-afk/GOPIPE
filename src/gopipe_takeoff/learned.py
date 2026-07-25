@@ -56,6 +56,19 @@ def load_aliases(path: str | Path | None = None, *, org: str | None = None,
     from .locale import DEFAULT_LOCALE, current_locale
 
     loc = (locale or current_locale())
+
+    # Supabase が正本のときは、そちらだけを見る。
+    # ローカルJSONを混ぜると、サーバレスの /tmp に残った控えが温まった
+    # コンテナで生き続け、**取り消したはずの言い換えが効き続ける**。
+    # （説明書動画の収録中に実際に踏んだ。取り消しても次の実行でまだ効いていた）
+    if remote:
+        try:
+            from . import store
+            if store.is_enabled():
+                return store.load_learned_aliases(org or current_org(), locale=loc)
+        except Exception:  # noqa: BLE001  読めなければローカルへ落ちる
+            pass
+
     raw = _read(path or DEFAULT_PATH)
     out: dict = {}
     for k, v in raw.items():
@@ -65,13 +78,6 @@ def load_aliases(path: str | Path | None = None, *, org: str | None = None,
                 out[kraw] = v
         elif loc == DEFAULT_LOCALE:  # 旧 flat キー = ja
             out[k] = v
-    if remote:
-        try:
-            from . import store
-            if store.is_enabled():
-                out = {**out, **store.load_learned_aliases(org or current_org(), locale=loc)}
-        except Exception:  # noqa: BLE001
-            pass
     return out
 
 

@@ -37,6 +37,7 @@ export const config = {
     "/api/learn",
     "/api/items",
     "/api/items/rows",
+    "/api/dictionary",
     "/api/signup",
   ],
 };

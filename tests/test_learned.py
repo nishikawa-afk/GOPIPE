@@ -198,3 +198,23 @@ def test_raw_name_is_preserved_for_learning():
     out = classify([TakeoffItem(page=1, name="ゲートバルブ", quantity=1, unit="個")], d)
     assert out[0].name == "仕切弁"          # 表記ゆれは正規化される
     assert out[0].raw_name == "ゲートバルブ"  # 鍵は生の名前
+
+
+def test_revoked_alias_does_not_survive_in_local_cache(monkeypatch, tmp_path):
+    """取り消した言い換えが、ローカル控え経由で生き残らないこと。
+
+    サーバレスの /tmp は温まったコンテナで残る。Supabase 側で取り消しても
+    ローカルJSONを併合していると、次の実行でまだ効いてしまう
+    （説明書動画の収録中に実際に踏んだ）。Supabaseがあるときはそちらだけを見る。
+    """
+    import gopipe_takeoff.learned as L
+
+    stale = tmp_path / "learned.json"
+    stale.write_text(
+        '{"ja/バタフライ弁": {"canonical": "バタ弁", "raw": "バタフライ弁"}}', encoding="utf-8"
+    )
+    monkeypatch.setattr("gopipe_takeoff.store.is_enabled", lambda: True)
+    monkeypatch.setattr("gopipe_takeoff.store.load_learned_aliases", lambda org, locale="ja": {})
+
+    assert L.load_aliases(stale, remote=True) == {}          # 取り消し済み＝出てこない
+    assert "バタフライ弁" in L.load_aliases(stale, remote=False)  # 単独運用では従来どおり
