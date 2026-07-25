@@ -30,9 +30,12 @@ export default function LoginPage() {
       const sb = supabaseBrowser();
       const { error: signInError } = await sb.auth.signInWithPassword({ email, password });
       if (signInError) {
+        // 「まだ登録していない」と「パスワード違い」は見分けが付かない（総当たりに
+        // 使われるため Supabase は区別を返さない）。初めての人が必ずここで詰まるので、
+        // 次の一手を文言で示す。
         throw new Error(
           mode === "login"
-            ? "メールかパスワードが違います"
+            ? "入れませんでした。まだ登録していない場合は、下の「はじめて使う（招待コードで登録）」から登録してください。パスワードをお忘れの場合は管理者にご連絡ください。"
             : "登録はできましたが、ログインに失敗しました",
         );
       }
@@ -56,11 +59,30 @@ export default function LoginPage() {
       <h1 className="mt-2 mb-1 text-[28px] font-black">
         {mode === "login" ? "ログイン" : "はじめて使う"}
       </h1>
-      <p className="mt-0 mb-7 text-[14px] text-[var(--mut)]">
+      <p className="mt-0 mb-4 text-[14px] text-[var(--mut)]">
         {mode === "login"
-          ? "会社で使っているメールとパスワードを入れてください。"
+          ? "会社で使っているメールと、ご自身で決めたパスワードを入れてください。"
           : "管理者から受け取った招待コードで登録します。パスワードはご自身で決めてください。"}
       </p>
+
+      {mode === "login" && (
+        // はじめての人は、ここに来て手が止まる（実際に止まった）。
+        // 「アカウントは自分で作る」ことが分からないと、社員全員が同じ壁に当たる。
+        <div className="mb-6 rounded-[11px] border border-[rgba(86,204,242,0.35)] bg-[rgba(86,204,242,0.07)] px-4 py-3 text-[13.5px] text-[var(--mut)]">
+          <span className="font-bold text-[var(--cyan)]">はじめての方へ</span>
+          <br />
+          GoPipe は最初に一度、ご自身で登録が要ります（招待コードが必要です）。
+          <button
+            onClick={() => {
+              setMode("signup");
+              setError("");
+            }}
+            className="mt-1 block font-bold text-[var(--cyan)] underline"
+          >
+            招待コードで登録する →
+          </button>
+        </div>
+      )}
 
       <form onSubmit={submit} className="flex flex-col gap-3">
         {mode === "signup" && (
