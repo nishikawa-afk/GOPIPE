@@ -5,23 +5,25 @@ from .models import TakeoffItem
 
 
 def classify(items: list[TakeoffItem], dictionary: TakeoffDictionary) -> list[TakeoffItem]:
-    """辞書ベースで category を埋める。ヒットしなければ 'その他'。
+    """辞書ベースで category / unit を補い、表記ゆれだけを正規名にそろえる。
+
+    名称を正規名へ書き換えるのは **完全一致のとき（＝表記ゆれと確定できるとき）だけ**。
+    部分一致で書き換えると、AIが正しく読んだ「逆止弁 DN20」が別部材の名前に
+    化けて表が嘘になり、同じ名前が並んで重複チェックまで誤爆する。
+    raw_name には AI が実際に読んだ名前を必ず残す（学習の鍵になる）。
 
     Side-effect ではなく新しいリストを返す。
     """
     out: list[TakeoffItem] = []
     for it in items:
-        entry = dictionary.lookup(it.name)
-        if entry is not None:
-            out.append(
-                it.model_copy(
-                    update={
-                        "category": entry.category,
-                        "name": entry.canonical,
-                        "unit": it.unit or entry.unit,
-                    }
-                )
-            )
+        entry, exact = dictionary.resolve(it.name)
+        update: dict = {"raw_name": it.raw_name or it.name}
+        if entry is None:
+            update["category"] = "その他"
         else:
-            out.append(it.model_copy(update={"category": "その他"}))
+            update["category"] = entry.category
+            update["unit"] = it.unit or entry.unit
+            if exact:
+                update["name"] = entry.canonical
+        out.append(it.model_copy(update=update))
     return out

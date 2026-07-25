@@ -72,6 +72,10 @@ def _items_json(items) -> list[dict]:
             "location": it.location, "quantity": it.quantity, "unit": it.unit,
             "confidence": round(it.confidence, 2),
             "checks": flags.get(i, []),
+            # 学習の鍵。表示名を鍵にすると、直すたびに別部材まで巻き添えで化ける。
+            "raw_name": it.raw_name or it.name,
+            "qty_vision": it.qty_vision,
+            "page": it.page,
         }
         for i, it in enumerate(items)
     ]
@@ -99,6 +103,33 @@ def _require_key(api_key: str | None, what: str) -> None:
             status_code=401,
             detail=f"{what} には x-gopipe-key ヘッダが必要です（provider=mock は不要）。",
         )
+
+
+def _require_org_read(org_slug: str, api_key: str | None) -> None:
+    """会社を指定して辞書を引く操作は鍵必須（他社の育てた辞書を覗かせない）。"""
+    if org_slug:
+        _require_key(api_key, f"会社({org_slug})の辞書の参照")
+
+
+def _dictionary_for(org_slug: str = ""):
+    """その会社の辞書（組み込み＋会社が育てた別名）を1か所で組み立てる。
+
+    ここを通さない経路があると、覚えた呼び方が「拾い出しでは効くのに見積では戻る」
+    という形で崩れる。classify を呼ぶ全経路はこの関数を使うこと。
+    """
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.learned import load_aliases
+
+    if org_slug:
+        os.environ["GOPIPE_ORG"] = org_slug
+    d = TakeoffDictionary.from_yaml(_kpath("dictionary.yaml"))
+    try:
+        learned = load_aliases()
+        if learned:
+            d.add_learned(learned)
+    except Exception:  # noqa: BLE001  堀が引けなくても拾い出しは続ける
+        pass
+    return d
 
 
 def _takeoff(
@@ -165,6 +196,9 @@ async def takeoff(
 ):
     result = _takeoff(provider, file, x_gopipe_key, storage_path, org_slug)
     resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
+    # 読めなかったページは黙って落とさない。「0件」と「読めていない」は別物。
+    if getattr(result, "failures", None):
+        resp["warnings"] = result.failures
     if persist:
         # 書き込みは service_role（RLSバイパス）で走る。無認証で開けない。
         _require_key(x_gopipe_key, "persist=true")
@@ -300,7 +334,13 @@ async def emergency(symptom: str = Form(...)):
 
 
 @app.post("/insulation")
-async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
+async def insulation(
+    rooms: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """部屋寸法/面積（LiDAR・手測り）→ 断熱面積(壁/天井/床 m²)の拾い出し＋見積。
 
     rooms 例: [{"name":"LDK","width_m":5.4,"depth_m":4.2,"height_m":2.5,
@@ -316,7 +356,7 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(rooms_from_dicts(rooms)),
-        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
         items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
@@ -330,7 +370,13 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
 
 
 @app.post("/site_measure")
-async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10):
+async def site_measure(
+    measures: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """現地実測（LiDAR/巻尺）→ 空調・配管の拾い出し＋見積。
 
     measures 例: [{"kind":"角ダクト","name":"角ダクト","width_mm":500,"height_mm":400,"length_m":10},
@@ -345,7 +391,7 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
 
     items = classify(
         items_from_measures(measures),
-        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
         items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
@@ -359,7 +405,13 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
 
 
 @app.post("/riser")
-async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
+async def riser(
+    risers: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """系統図×階高 → 立管・隠蔽配管の延長/継手/弁を積算した拾い出し＋見積。
 
     平面図に長さが出ない立管を 階高×階数×本数 で延長(m)化し、継手・弁も階数比例で積算する。
@@ -376,7 +428,7 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(risers_from_dicts(risers)),
-        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
         items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
@@ -390,7 +442,13 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
 
 
 @app.post("/legend_count")
-async def legend_count(file: UploadFile | None = File(None), overhead: float = 0.10):
+async def legend_count(
+    file: UploadFile | None = File(None),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """凡例（記号→名称）を解析し、テキスト層の記号出現数を機械カウント → 個数モノの拾い出し＋見積。
 
     ベクターPDF専用（テキスト層が必要）。スキャン図やテキスト層が無い場合は 0 件を返す。
@@ -408,7 +466,7 @@ async def legend_count(file: UploadFile | None = File(None), overhead: float = 0
                 "note": "ベクターPDF（テキスト層あり）をアップロードしてください"}
     items = classify(
         count_from_pdf(str(pdf)),
-        TakeoffDictionary.from_yaml(_kpath("dictionary.yaml")),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
         items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
@@ -452,7 +510,9 @@ async def learn(
     for row in rows:
         before = row.get("before") or {}
         after = row.get("after") or {}
-        old_name = str(before.get("name") or "").strip()
+        # 鍵は「AIが実際に読んだ生の名前」。表示名(before.name)は分類で正規化済みの
+        # ことがあり、それを鍵にすると別部材まで巻き添えで化ける。
+        old_name = str(before.get("raw_name") or before.get("name") or "").strip()
         new_name = str(after.get("name") or "").strip()
         if not new_name:
             continue
@@ -542,4 +602,50 @@ async def learned_list(
              "category": v.get("category"), "unit": v.get("unit")}
             for k, v in aliases.items()
         ],
+    }
+
+
+@app.post("/inspect")
+async def inspect(
+    storage_path: str = Form(""),
+    file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """投げる前に、その図面が読めるものかを返す。
+
+    スキャン画像の図面はテキスト層が無く、機器表の数量を確定情報として使えないため
+    精度が落ちる。実行して薄い結果が出てから「AIは使えない」と結論される前に、
+    入力側の問題であることを本人に伝えるための口。
+    """
+    if storage_path:
+        _require_key(x_gopipe_key, "Storage 上の図面の読み込み")
+    import fitz  # PyMuPDF
+
+    pdf = _save_upload(file, storage_path)
+    if not Path(pdf).exists():
+        raise HTTPException(status_code=400, detail="図面が見つかりません")
+
+    doc = fitz.open(str(pdf))
+    pages = doc.page_count
+    text_chars = 0
+    for i in range(min(pages, 20)):  # 先頭20ページで判定（大判一式でも即答するため）
+        text_chars += len(doc[i].get_text() or "")
+    doc.close()
+
+    has_text = text_chars >= 200
+    if has_text:
+        kind, advice = "cad", "テキスト層あり。機器表の数量を確定情報として使えます。"
+    else:
+        kind, advice = "scan", (
+            "テキスト層がありません（スキャン図面の可能性）。"
+            "数量は画像認識だけに頼るため精度が落ちます。CAD出力のPDFがあればそちらを推奨します。"
+        )
+    return {
+        "pages": pages,
+        "kind": kind,
+        "has_text_layer": has_text,
+        "text_chars": text_chars,
+        "advice": advice,
+        # 1ページあたり十数秒〜。300秒の上限に対して危ないかを先に伝える
+        "may_time_out": pages > 12,
     }

@@ -75,8 +75,75 @@ prices:
     unit_price: 2400
     unit: m
     material_ratio: 0.45
+  # 弁は種類で値段が桁違いに変わる。カテゴリ既定に落とすと、逆止弁もバタフライ弁も
+  # 同じ8,000円で積まれてしまう。名前は完全一致なので、辞書の canonical と必ず揃える。
+  - category: 弁類
+    name: 仕切弁
+    unit_price: 8000
+    unit: 個
+    material_ratio: 0.60
+  - category: 弁類
+    name: 玉形弁
+    unit_price: 9500
+    unit: 個
+    material_ratio: 0.60
+  - category: 弁類
+    name: ボール弁
+    unit_price: 6500
+    unit: 個
+    material_ratio: 0.60
+  - category: 弁類
+    name: バタフライ弁
+    unit_price: 14000
+    unit: 個
+    material_ratio: 0.65
+  - category: 弁類
+    name: 逆止弁
+    unit_price: 11000
+    unit: 個
+    material_ratio: 0.62
+  - category: 弁類
+    name: 止水栓
+    unit_price: 4500
+    unit: 個
+    material_ratio: 0.60
+  - category: 弁類
+    name: 減圧弁
+    unit_price: 18000
+    unit: 個
+    material_ratio: 0.65
   - category: 弁類
     unit_price: 8000
+    unit: 個
+    material_ratio: 0.60
+  - category: 継手
+    name: エルボ
+    unit_price: 1200
+    unit: 個
+    material_ratio: 0.55
+  - category: 継手
+    name: チーズ
+    unit_price: 1600
+    unit: 個
+    material_ratio: 0.55
+  - category: 継手
+    name: ソケット
+    unit_price: 900
+    unit: 個
+    material_ratio: 0.55
+  - category: 継手
+    name: ニップル
+    unit_price: 800
+    unit: 個
+    material_ratio: 0.55
+  - category: 継手
+    name: レジューサ
+    unit_price: 1500
+    unit: 個
+    material_ratio: 0.55
+  - category: 継手
+    name: フランジ
+    unit_price: 3200
     unit: 個
     material_ratio: 0.60
   - category: 継手

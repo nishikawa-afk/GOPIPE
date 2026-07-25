@@ -88,6 +88,8 @@ export default function Workbench({
       .filter((r) => r.base.name)
       .map((r) => ({
         before: {
+          // 学習の鍵はAIが読んだ生名称。表示名を送ると別部材まで巻き添えで化ける。
+          raw_name: r.base.raw_name ?? r.base.name,
           name: r.base.name,
           spec: r.base.spec,
           quantity: r.base.quantity,

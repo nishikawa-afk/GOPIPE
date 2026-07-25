@@ -117,3 +117,41 @@ def test_export_xlsx_returns_workbook():
 
 def test_export_xlsx_rejects_empty():
     assert client.post("/export/xlsx", json={"items": []}).status_code == 400
+
+
+def test_llm_outage_is_reported_in_japanese_not_500(monkeypatch):
+    """AI側の一時障害で、現場に英語の500を見せないこと。
+
+    3分待った末に英語のスタックトレースが出ると、担当は理由が分からないまま
+    「GoPipeは使えない」と結論する。ページ単位の失敗として日本語で伝える。
+    """
+    from gopipe_takeoff import extractor
+
+    monkeypatch.setattr(extractor.time, "sleep", lambda *_: None)
+
+    class _Boom:
+        def complete(self, *a, **k):
+            raise RuntimeError("Error code: 500 - internal server error")
+
+    try:
+        extractor._call_llm_for_image(
+            _Boom(), "sys", image_png=None, user_text="u", page_number=3
+        )
+    except extractor.ExtractionFailed as e:
+        assert "3ページ" in str(e)
+        assert "実行し直して" in str(e)
+    else:
+        raise AssertionError("ExtractionFailed が投げられていない")
+
+
+def test_unreadable_page_is_not_reported_as_zero_items():
+    """読めなかったページを「0件」に化けさせないこと。"""
+    from gopipe_takeoff.extractor import ExtractionFailed, _parse_response
+
+    for raw in ["", "not json at all", '{"a": 1}']:
+        try:
+            _parse_response(raw, page_number=2)
+        except ExtractionFailed:
+            pass
+        else:
+            raise AssertionError(f"黙って0件になった: {raw!r}")

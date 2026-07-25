@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +50,15 @@ STANDARD_UNITS = ("m2", "m", "式", "箇所", "枚", "面", "台", "本", "個",
 
 # classifier の部分一致しきい値（< だと事実上無視される）
 MIN_ALIAS_LENGTH_FOR_PARTIAL_MATCH = 3
+
+
+def norm_key(s: str | None) -> str:
+    """辞書の鍵を突き合わせるための正規化。
+
+    learned.py 側の保存時と同じ規則（NFKC・空白除去）にそろえる。ここがズレると
+    「覚えたのに引けない」が静かに起きる。
+    """
+    return unicodedata.normalize("NFKC", (s or "").strip()).replace(" ", "").replace("　", "")
 
 
 @dataclass
@@ -231,28 +241,58 @@ class TakeoffDictionary:
     def __init__(self, entries: list[DictionaryEntry]) -> None:
         self.entries = entries
         self._index: dict[str, DictionaryEntry] = {}
+        # 会社が育てた索引は組み込みと必ず分けて持つ。混ぜると、学習が組み込みの
+        # エントリを乗っ取り「2種類目を教えた瞬間に1種類目が化ける」事故になる。
+        self._learned_index: dict[str, DictionaryEntry] = {}
         for e in entries:
-            self._index[e.canonical] = e
+            self._put(self._index, e.canonical, e)
             for a in e.aliases:
-                self._index[a] = e
+                self._put(self._index, a, e)
+
+    @staticmethod
+    def _put(index: dict, key: str, entry: DictionaryEntry) -> None:
+        k = norm_key(key)
+        if k:
+            index[k] = entry
+
+    def _partial(self, index: dict, name: str) -> DictionaryEntry | None:
+        """部分一致。最長の鍵を勝たせる（「水管」より「給水管」を採る）。"""
+        best_key = ""
+        best: DictionaryEntry | None = None
+        for key, entry in index.items():
+            if len(key) >= MIN_ALIAS_LENGTH_FOR_PARTIAL_MATCH and key in name and len(key) > len(best_key):
+                best_key, best = key, entry
+        return best
+
+    def resolve(self, name: str) -> tuple[DictionaryEntry | None, bool]:
+        """(エントリ, 完全一致だったか) を返す。
+
+        探索順は 会社の学習(完全) → 組み込み(完全) → 会社の学習(部分) → 組み込み(部分)。
+        完全一致でないときに名称を正規名へ書き換えると、AIが正しく読んだ名前
+        （例: 「逆止弁 DN20」）を別部材の名前に化けさせるので、呼び出し側が
+        判断できるよう「完全一致だったか」を返す。
+        """
+        n = norm_key(name)
+        if not n:
+            return None, False
+        if n in self._learned_index:
+            return self._learned_index[n], True
+        if n in self._index:
+            return self._index[n], True
+        hit = self._partial(self._learned_index, n)
+        if hit is not None:
+            return hit, False
+        return self._partial(self._index, n), False
 
     def lookup(self, name: str) -> DictionaryEntry | None:
-        if not name:
-            return None
-        if name in self._index:
-            return self._index[name]
-        # 緩い部分一致（左から短い別名にヒットさせない）
-        for key, entry in self._index.items():
-            if len(key) >= MIN_ALIAS_LENGTH_FOR_PARTIAL_MATCH and key in name:
-                return entry
-        return None
+        return self.resolve(name)[0]
 
     def add_learned(self, aliases: dict) -> int:
         """学習済み別名 {raw: {canonical, category, unit, raw}} を辞書に統合する。
 
-        ユーザー修正で得た「生の名称(raw) → 正規名(canonical)」を、対応する正規名の
-        エントリにエイリアスとして紐づける（=使うほど分類が賢くなる）。正規名が
-        未登録なら、修正時のカテゴリ/単位で新規エントリを作る。統合した件数を返す。
+        raw（＝AIが実際に読んだ生の名称）だけを会社側の索引に入れる。組み込みの
+        索引には一切触らない。触ると「仕切弁→バタフライ弁」を教えた瞬間に、
+        図面上の本物の仕切弁まで全部バタフライ弁に化ける。
         """
         n = 0
         for raw, info in (aliases or {}).items():
@@ -260,24 +300,20 @@ class TakeoffDictionary:
             canon = str(info.get("canonical") or raw).strip()
             if not raw or not canon:
                 continue
-            entry = self._index.get(canon)
-            if entry is None or entry.canonical != canon:
-                # entry があるのに canonical が違う＝組み込み辞書では canon が
-                # 別名扱いのケース（例: 「ゲートバルブ」は「仕切弁」の別名）。
-                # そのままだと現場が直した呼び方が本社辞書に負けて元に戻り、
-                # 「直しても無駄」になる。会社が選んだ呼び方を正にする。
-                entry = DictionaryEntry(
-                    canonical=canon,
-                    category=(info.get("category") or (entry.category if entry else "その他")),
-                    unit=(info.get("unit") or (entry.unit if entry else "")),
-                    aliases=(),
-                )
-                self.entries.append(entry)
-                self._index[canon] = entry
-            self._index[raw] = entry
+            base, _exact = self.resolve(canon)
+            entry = DictionaryEntry(
+                canonical=canon,
+                category=(info.get("category") or (base.category if base else "その他")),
+                unit=(info.get("unit") or (base.unit if base else "")),
+                aliases=(),
+            )
+            self.entries.append(entry)
+            self._put(self._learned_index, raw, entry)
             _orig = info.get("raw")
             if _orig:
-                self._index[str(_orig)] = entry
+                self._put(self._learned_index, str(_orig), entry)
+            # 会社が選んだ呼び方そのものも引けるようにする（次回そのまま出るように）
+            self._put(self._learned_index, canon, entry)
             n += 1
         return n
 

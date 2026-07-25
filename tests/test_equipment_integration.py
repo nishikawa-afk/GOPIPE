@@ -28,13 +28,33 @@ TEXT = """機器表
 """
 
 
-def test_reconcile_overwrites_quantity_from_table():
-    """vision の数量(1)を機器表の台数(2)で上書きし、信頼度を引き上げる。"""
+def test_reconcile_disagreement_is_surfaced_not_hidden():
+    """数量が食い違ったら、機器表を採用しつつ「食い違った事実」を人に見せる。
+
+    旧仕様はここで confidence を0.95に引き上げていた。つまり **最も検算すべき行が
+    画面で最も安全（🟢そのままでOK）に見える** 状態で、掟「AIは提案・確定は人」が
+    唯一崩れている場所だった。図面側の読みを qty_vision に残し、確度は下げる。
+    """
     vision = [_v("全熱交換器", "HEX-1 250型", 1)]
     out = reconcile_with_text_table(vision, TEXT, page=1)
     hx = next(i for i in out if "全熱交換器" in i.name)
-    assert hx.quantity == 2          # 機器表優先（vision 1 → 2）
+    assert hx.quantity == 2            # 機器表優先（vision 1 → 2）
+    assert hx.qty_vision == 1          # 図面側の読みを捨てない
     assert hx.source == "reconciled"
+    assert hx.confidence <= 0.6        # 食い違った行を「安全」に見せない
+
+    from gopipe_takeoff.validate_items import check_item
+
+    assert any("図面と機器表で数量が違う" in s for s in check_item(hx))
+
+
+def test_reconcile_agreement_raises_confidence():
+    """一致したときだけ「機器表で裏が取れた」として確度を上げる。"""
+    vision = [_v("全熱交換器", "HEX-1 250型", 2)]
+    out = reconcile_with_text_table(vision, TEXT, page=1)
+    hx = next(i for i in out if "全熱交換器" in i.name)
+    assert hx.quantity == 2
+    assert hx.qty_vision is None
     assert hx.confidence >= 0.95
 
 

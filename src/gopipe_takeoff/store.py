@@ -128,10 +128,21 @@ def record_learned_alias(
 ) -> bool:
     """learned_aliases を (org_id, locale, raw) で upsert（service_role・ロケール別の堀の永続化）。"""
     org_id = ensure_org(org_slug, org_slug)
+    # 既存があれば hits を伸ばす。どの別名が現場で効いているかの順位付けに使う
+    # （抽出プロンプトへ載せる優先順・辞書ページの並び）。
+    existing = _req(
+        "GET", "learned_aliases",
+        params=(
+            f"?org_id=eq.{org_id}&locale=eq.{urllib.parse.quote(locale)}"
+            f"&raw=eq.{urllib.parse.quote(raw)}&select=id,hits"
+        ),
+    )
+    hits = (existing[0].get("hits") or 1) + 1 if existing else 1
     _req(
         "POST", "learned_aliases",
         body=[{"org_id": org_id, "raw": raw, "canonical": canonical,
-               "category": category, "unit": unit, "locale": locale}],
+               "category": category, "unit": unit, "locale": locale,
+               "hits": hits, "updated_at": "now()"}],
         prefer="resolution=merge-duplicates,return=minimal",
         params="?on_conflict=org_id,locale,raw",
     )
@@ -141,15 +152,21 @@ def record_learned_alias(
 def load_learned_aliases(org_slug: str, locale: str = "ja") -> dict:
     """org × locale の learned_aliases を {raw: {canonical, category, unit, raw}} で返す。"""
     org_id = ensure_org(org_slug, org_slug)
+    # order を明示しないと、抽出プロンプトに載る先頭N件が実行ごとに変わり
+    # 「昨日は直ったのに今日は戻る」になる。よく使われている別名から順に。
     rows = _req(
         "GET", "learned_aliases",
-        params=f"?org_id=eq.{org_id}&locale=eq.{locale}&select=raw,canonical,category,unit",
+        params=(
+            f"?org_id=eq.{org_id}&locale=eq.{locale}"
+            "&select=raw,canonical,category,unit,hits"
+            "&order=hits.desc,updated_at.desc&limit=2000"
+        ),
     )
     out: dict = {}
     for r in (rows or []):
         out[r["raw"]] = {
             "canonical": r.get("canonical"), "category": r.get("category"),
-            "unit": r.get("unit"), "raw": r.get("raw"),
+            "unit": r.get("unit"), "raw": r.get("raw"), "hits": r.get("hits") or 1,
         }
     return out
 

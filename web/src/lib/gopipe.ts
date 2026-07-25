@@ -22,6 +22,12 @@ export type TakeoffItem = {
   confidence: number;
   /** 整合チェックの指摘（二重計上の疑い・数量0・単位×カテゴリ不一致など） */
   checks?: string[];
+  /** AIが図面から実際に読んだ生の名称。学習の鍵はこちら（表示名ではない） */
+  raw_name?: string | null;
+  /** 機器表を採用した行の「図面側の読み」。食い違ったときだけ入る */
+  qty_vision?: number | null;
+  /** 何ページ目か。🔴の行を図面で確認するときに要る */
+  page?: number;
 };
 
 /** 🔴＝要確認。Streamlit 版と同じ 0.7 / 0.85 の線を守る。 */

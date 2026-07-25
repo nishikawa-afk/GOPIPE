@@ -152,8 +152,49 @@ def test_company_wording_beats_builtin_dictionary():
     assert d.lookup("ゲートバルブ").canonical == "仕切弁"  # 組み込みの向き
 
     d.add_learned(
-        {"仕切弁": {"canonical": "ゲートバルブ", "category": "弁類", "unit": "個", "raw": "仕切弁"}}
+        {"ゲートバルブ": {"canonical": "ゲートバルブ", "category": "弁類", "unit": "個",
+                        "raw": "ゲートバルブ"}}
     )
-    out = classify([TakeoffItem(page=1, name="仕切弁", quantity=6, unit="個")], d)
+    out = classify([TakeoffItem(page=1, name="ゲートバルブ", quantity=6, unit="個")], d)
     assert out[0].name == "ゲートバルブ"
     assert out[0].category == "弁類"
+
+
+def test_teaching_one_valve_does_not_transform_another():
+    """2種類目を教えても1種類目が消えないこと。
+
+    旧実装は学習を組み込み索引へ直接書き込んでいたため、
+    「AIが読んだ"BV-1"はうちではバタフライ弁」と教えた瞬間に、
+    図面上の本物の仕切弁まで全部バタフライ弁に化けた。教えるほど堀が壊れる状態。
+    """
+    d = TakeoffDictionary.from_yaml(DICT)
+    d.add_learned({
+        "BV-1": {"canonical": "バタフライ弁", "category": "弁類", "unit": "個", "raw": "BV-1"},
+        "CV-1": {"canonical": "逆止弁", "category": "弁類", "unit": "個", "raw": "CV-1"},
+    })
+    out = classify([
+        TakeoffItem(page=1, name="BV-1", quantity=2, unit="個"),
+        TakeoffItem(page=1, name="CV-1", quantity=3, unit="個"),
+        TakeoffItem(page=1, name="仕切弁", quantity=5, unit="個"),
+    ], d)
+    assert [i.name for i in out] == ["バタフライ弁", "逆止弁", "仕切弁"]
+
+
+def test_partial_match_never_renames():
+    """部分一致で名前を書き換えないこと。
+
+    「逆止弁 DN20」を辞書の部分一致で「仕切弁」に化けさせると、表が嘘になり、
+    同じ名前が並んで二重計上チェックまで誤爆する。カテゴリは補ってよい。
+    """
+    d = TakeoffDictionary.from_yaml(DICT)
+    out = classify([TakeoffItem(page=1, name="逆止弁 DN20 屋内", quantity=4, unit="個")], d)
+    assert out[0].name == "逆止弁 DN20 屋内"   # AIの読みをそのまま残す
+    assert out[0].category == "弁類"           # 分類だけは効く
+
+
+def test_raw_name_is_preserved_for_learning():
+    """分類で表示名が正規化されても、AIが読んだ生名称は残ること（学習の鍵）。"""
+    d = TakeoffDictionary.from_yaml(DICT)
+    out = classify([TakeoffItem(page=1, name="ゲートバルブ", quantity=1, unit="個")], d)
+    assert out[0].name == "仕切弁"          # 表記ゆれは正規化される
+    assert out[0].raw_name == "ゲートバルブ"  # 鍵は生の名前
