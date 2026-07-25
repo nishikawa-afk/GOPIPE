@@ -8,10 +8,16 @@
 from __future__ import annotations
 
 import json
+import os
 import unicodedata
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "out" / "learned_aliases.json"
+# サーバレス(Vercel)はリポジトリ配下が読取専用。GOPIPE_LEARNED_PATH で /tmp 等へ逃がせる。
+# 堀の正本は Supabase 側（learned_aliases）で、このJSONはローカル開発の補助。
+DEFAULT_PATH = Path(
+    os.environ.get("GOPIPE_LEARNED_PATH")
+    or (Path(__file__).resolve().parents[2] / "out" / "learned_aliases.json")
+)
 
 
 def _norm(s: str | None) -> str:
@@ -30,7 +36,7 @@ def _read(path: str | Path) -> dict:
         return {}
 
 
-def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default",
+def load_aliases(path: str | Path | None = None, *, org: str = "default",
                  locale: str | None = None, remote: bool = True) -> dict:
     """指定ロケールの学習済み別名 {raw: info} を返す。ローカル＋（有効なら）Supabaseをマージ。
 
@@ -40,7 +46,7 @@ def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default",
     from .locale import DEFAULT_LOCALE, current_locale
 
     loc = (locale or current_locale())
-    raw = _read(path)
+    raw = _read(path or DEFAULT_PATH)
     out: dict = {}
     for k, v in raw.items():
         if "/" in k:
@@ -61,7 +67,7 @@ def load_aliases(path: str | Path = DEFAULT_PATH, *, org: str = "default",
 
 def record_alias(
     raw: str, canonical: str, *, category: str | None = None, unit: str | None = None,
-    path: str | Path = DEFAULT_PATH, org: str | None = None, locale: str | None = None,
+    path: str | Path | None = None, org: str | None = None, locale: str | None = None,
 ) -> bool:
     """生の名称 raw を正規名 canonical に（ロケール単位で）学習する。変化が無い/空なら False。"""
     from .locale import current_locale
@@ -71,21 +77,30 @@ def record_alias(
     canon = (canonical or "").strip()
     if not raw_n or not canon or _norm(canon) == raw_n:
         return False
-    p = Path(path)
+    p = Path(path or DEFAULT_PATH)
     data = _read(p)
     data[f"{loc}/{raw_n}"] = {
         "canonical": canon, "category": category, "unit": unit,
         "raw": (raw or "").strip(), "locale": loc,
     }
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    try:  # Supabase 併用（任意・best-effort）
+    # ローカルJSONは補助。サーバレスの読取専用FSで落ちても、堀の正本(Supabase)への
+    # 書き込みまで道連れにしない（ここで例外を投げると学習が丸ごと消える）。
+    wrote_local = False
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        wrote_local = True
+    except OSError:
+        pass
+    persisted = False
+    try:  # Supabase 併用（設定時のみ）
         from . import store
         if hasattr(store, "record_learned_alias") and store.is_enabled():
             store.record_learned_alias(org or "default", raw_n, canon, category, unit, locale=loc)
+            persisted = True
     except Exception:  # noqa: BLE001
         pass
-    return True
+    return wrote_local or persisted
 
 
 def stats(aliases: dict | None = None) -> dict:

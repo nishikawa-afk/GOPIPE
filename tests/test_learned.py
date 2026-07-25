@@ -73,3 +73,29 @@ def test_add_learned_creates_entry_for_unknown_canonical():
     d.add_learned({"謎部材A": {"canonical": "特注金物", "category": "雑材", "unit": "個", "raw": "謎部材A"}})
     out = classify([TakeoffItem(page=1, name="謎部材A", quantity=2, unit="個")], d)
     assert out[0].name == "特注金物" and out[0].category == "雑材"
+
+
+def test_record_alias_survives_readonly_fs(monkeypatch, tmp_path):
+    """サーバレス(読取専用FS)でも堀への学習を諦めない。
+
+    ローカルJSONが書けないだけで例外を投げると、Supabase への永続まで道連れになり
+    『本番だけ学習が効かない』が静かに起きる。ここが落ちたら堀が死ぬ。
+    """
+    import gopipe_takeoff.learned as L
+
+    ro = tmp_path / "readonly" / "learned.json"
+
+    def _boom(*a, **k):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(Path, "write_text", _boom)
+    calls = []
+
+    def _record(org, raw, canon, category, unit, locale="ja"):
+        calls.append((org, raw, canon))
+        return True
+
+    monkeypatch.setattr("gopipe_takeoff.store.is_enabled", lambda: True)
+    monkeypatch.setattr("gopipe_takeoff.store.record_learned_alias", _record)
+    assert L.record_alias("全熱交ユニット", "全熱交換器", path=ro, org="haruki") is True
+    assert calls and calls[0][2] == "全熱交換器"

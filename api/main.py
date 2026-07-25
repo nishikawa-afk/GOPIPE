@@ -390,3 +390,127 @@ async def legend_count(file: UploadFile | None = File(None), overhead: float = 0
         "subtotal": est.subtotal,
         "total": est.total,
     }
+
+
+# --------------------------------------------------------------------------
+# Web UI（Vercel）から使う口。Streamlit が in-process でやっていた
+# 「修正 → 学習の堀」「Excel 出力」を REST 化する。
+# --------------------------------------------------------------------------
+
+@app.post("/learn")
+async def learn(
+    payload: dict = Body(...),
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """人が直した行を学習の堀（learned_aliases）へ還元する。
+
+    payload = {"org_slug": "haruki", "project": "webui",
+               "corrections": [{"before": {...}, "after": {...}}, ...]}
+    before/after は name / spec / quantity / unit / category を持つ dict。
+    名称・カテゴリ・単位のいずれかが変わった行だけを別名として学習する。
+    """
+    _require_key(x_gopipe_key, "学習の記録(/learn)")
+
+    from gopipe_takeoff.feedback import record_correction
+    from gopipe_takeoff.learned import record_alias
+
+    org = str(payload.get("org_slug") or "default")
+    project = str(payload.get("project") or "webui")
+    rows = payload.get("corrections") or []
+    ts = datetime.date.today().isoformat()
+
+    captured = learned = 0
+    for row in rows:
+        before = row.get("before") or {}
+        after = row.get("after") or {}
+        old_name = str(before.get("name") or "").strip()
+        new_name = str(after.get("name") or "").strip()
+        if not new_name:
+            continue
+        try:
+            record_correction(project=project, before=before, after=after, ts=ts)
+            captured += 1
+        except Exception:  # noqa: BLE001  副産物の記録失敗で学習を止めない
+            pass
+        changed = (
+            old_name != new_name
+            or str(before.get("category") or "") != str(after.get("category") or "")
+            or str(before.get("unit") or "") != str(after.get("unit") or "")
+        )
+        if changed and old_name:
+            try:
+                if record_alias(
+                    old_name, new_name,
+                    category=(after.get("category") or None),
+                    unit=(after.get("unit") or None),
+                    org=org,
+                ):
+                    learned += 1
+            except Exception:  # noqa: BLE001
+                pass
+    return {"captured": captured, "learned": learned, "org_slug": org}
+
+
+@app.post("/export/xlsx")
+async def export_xlsx(payload: dict = Body(...)):
+    """確定済みの拾い出し明細を Excel にして返す（ダウンロード用）。
+
+    サーバレスは /tmp だけが書込可なので、生成物は一時ファイル経由でバイト列にして返す。
+    """
+    from fastapi.responses import Response
+
+    from gopipe_takeoff.excel_writer import write_excel
+    from gopipe_takeoff.models import TakeoffItem
+
+    rows = payload.get("items") or []
+    items = [
+        TakeoffItem(
+            page=int(r.get("page") or 1),
+            name=str(r.get("name") or "").strip(),
+            spec=(r.get("spec") or None),
+            quantity=float(r.get("quantity") or 0),
+            unit=str(r.get("unit") or ""),
+            location=(r.get("location") or None),
+            category=(r.get("category") or None),
+            confidence=float(r.get("confidence") or 1.0),
+        )
+        for r in rows
+        if str(r.get("name") or "").strip()
+    ]
+    if not items:
+        raise HTTPException(status_code=400, detail="items が空です")
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = write_excel(items, OUT / "GOPIPE_拾い出し.xlsx")
+    data = Path(path).read_bytes()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="GOPIPE_takeoff.xlsx"'},
+    )
+
+
+@app.get("/learned")
+async def learned_list(
+    org_slug: str = "default",
+    locale: str = "ja",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """その会社が育てた学習済み別名（＝堀の中身）を Supabase から返す。
+
+    顧客データなのでキー必須。UI では「使うほど育っている」ことを見せる材料になる。
+    """
+    _require_key(x_gopipe_key, "学習済み別名の取得(/learned)")
+    from gopipe_takeoff import store
+
+    if not store.is_enabled():
+        raise HTTPException(status_code=503, detail="Supabase 未設定")
+    aliases = store.load_learned_aliases(org_slug, locale=locale)
+    return {
+        "org_slug": org_slug, "locale": locale, "count": len(aliases),
+        "aliases": [
+            {"raw": k, "canonical": v.get("canonical"),
+             "category": v.get("category"), "unit": v.get("unit")}
+            for k, v in aliases.items()
+        ],
+    }

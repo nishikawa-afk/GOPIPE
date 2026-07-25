@@ -74,3 +74,46 @@ def test_other_llm_endpoints_are_gated(path: str):
 def test_share_and_health_stay_public():
     assert client.get("/health").status_code == 200
     assert client.get("/share").status_code == 200
+
+
+def test_learn_requires_key():
+    os.environ["GOPIPE_API_KEY"] = "test-key"
+    r = client.post("/learn", json={"corrections": []})
+    assert r.status_code == 401
+
+
+def test_learn_records_alias_with_key(tmp_path, monkeypatch):
+    """名称が変わった行だけが堀（別名）に入る。"""
+    os.environ["GOPIPE_API_KEY"] = "test-key"
+    monkeypatch.setattr("gopipe_takeoff.learned.DEFAULT_PATH", tmp_path / "learned.json")
+    monkeypatch.setattr("gopipe_takeoff.feedback.DEFAULT_LOG", tmp_path / "fb.jsonl")
+    r = client.post(
+        "/learn",
+        headers={"x-gopipe-key": "test-key"},
+        json={
+            "org_slug": "haruki",
+            "corrections": [
+                {"before": {"name": "全熱交換ユニット", "unit": "台"},
+                 "after": {"name": "全熱交換器", "unit": "台", "category": "機器"}},
+                {"before": {"name": "変更なし", "unit": "m"},
+                 "after": {"name": "変更なし", "unit": "m"}},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["captured"] == 2
+    assert body["learned"] == 1
+
+
+def test_export_xlsx_returns_workbook():
+    r = client.post(
+        "/export/xlsx",
+        json={"items": [{"name": "給水管", "quantity": 12.5, "unit": "m", "category": "給水"}]},
+    )
+    assert r.status_code == 200
+    assert r.content[:2] == b"PK"  # xlsx = zip
+
+
+def test_export_xlsx_rejects_empty():
+    assert client.post("/export/xlsx", json={"items": []}).status_code == 400
