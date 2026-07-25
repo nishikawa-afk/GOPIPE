@@ -64,6 +64,18 @@ class TakeoffPipeline:
         raw_items = extract(drawing, two_pass=two_pass, use_text_table=use_text_table)
         logger.info("extracted=%d items", len(raw_items))
 
+        # その会社が育てた別名を辞書に混ぜてから分類する。これを忘れると、
+        # 現場がいくら直しても次回の結果が変わらない（＝堀が効かない）。
+        from .learned import current_org, load_aliases
+
+        try:
+            learned = load_aliases()
+            if learned:
+                n = self.dictionary.add_learned(learned)
+                logger.info("learned aliases merged: %d (org=%s)", n, current_org())
+        except Exception as e:  # noqa: BLE001  堀が引けなくても拾い出し自体は続ける
+            logger.warning("learned aliases unavailable: %s", e)
+
         logger.info("classifying ...")
         items = classify(raw_items, self.dictionary)
 

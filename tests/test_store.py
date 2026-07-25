@@ -52,7 +52,7 @@ def test_persist_takeoff_builds_expected_calls(monkeypatch):
     assert out == {"org_id": "org-1", "project_id": "proj-1", "items": 2}
 
     seq = [(m, p) for (m, p, *_rest) in calls]
-    assert ("POST", "organizations") in seq
+    assert ("GET", "organizations") in seq  # 既存会社は引くだけ（会社名を塗り潰さない）
     assert ("POST", "projects") in seq
     # 既存削除 → 再挿入の順
     assert seq.index(("DELETE", "takeoff_items")) < seq.index(("POST", "takeoff_items"))
@@ -83,3 +83,21 @@ def test_persist_empty_items_skips_insert(monkeypatch):
     # DELETE は走るが、空なので POST takeoff_items はしない
     assert ("DELETE", "takeoff_items") in calls
     assert ("POST", "takeoff_items") not in calls
+
+
+def test_ensure_org_does_not_overwrite_existing_name(monkeypatch):
+    """既存の会社名を API 呼び出しのたびに slug で塗り潰さないこと。
+
+    upsert にすると画面の会社名が「株式会社ハルキ」→「haruki」に化ける。
+    """
+    calls = []
+
+    def fake_req(method, path, *, body=None, prefer="", params=""):
+        calls.append((method, path, body))
+        if method == "GET" and path == "organizations":
+            return [{"id": "org-9"}]
+        return None
+
+    monkeypatch.setattr(store, "_req", fake_req)
+    assert store.ensure_org("haruki", "haruki") == "org-9"
+    assert [m for m, _p, _b in calls] == ["GET"]

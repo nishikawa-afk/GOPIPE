@@ -261,11 +261,15 @@ class TakeoffDictionary:
             if not raw or not canon:
                 continue
             entry = self._index.get(canon)
-            if entry is None:
+            if entry is None or entry.canonical != canon:
+                # entry があるのに canonical が違う＝組み込み辞書では canon が
+                # 別名扱いのケース（例: 「ゲートバルブ」は「仕切弁」の別名）。
+                # そのままだと現場が直した呼び方が本社辞書に負けて元に戻り、
+                # 「直しても無駄」になる。会社が選んだ呼び方を正にする。
                 entry = DictionaryEntry(
                     canonical=canon,
-                    category=(info.get("category") or "その他"),
-                    unit=(info.get("unit") or ""),
+                    category=(info.get("category") or (entry.category if entry else "その他")),
+                    unit=(info.get("unit") or (entry.unit if entry else "")),
                     aliases=(),
                 )
                 self.entries.append(entry)

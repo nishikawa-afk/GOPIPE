@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .models import TakeoffItem
@@ -57,7 +58,15 @@ def _req(method: str, path: str, *, body=None, prefer: str = "", params: str = "
 
 
 def ensure_org(slug: str, name: str) -> str:
-    """organizations を slug で upsert し、org_id を返す。"""
+    """organizations を slug で引き、無ければ作って org_id を返す。
+
+    既存の会社名は上書きしない。upsert にすると、API 呼び出しのたびに
+    name が slug（例: "haruki"）で塗り潰され、画面に出る会社名が
+    「株式会社ハルキ」から崩れてしまうため。
+    """
+    rows = _req("GET", "organizations", params=f"?slug=eq.{urllib.parse.quote(slug)}&select=id")
+    if rows:
+        return rows[0]["id"]
     rows = _req(
         "POST", "organizations",
         body=[{"slug": slug, "name": name or slug}],
@@ -67,14 +76,18 @@ def ensure_org(slug: str, name: str) -> str:
     return rows[0]["id"]
 
 
-def upsert_project(org_id: str, slug: str, title: str, item_count: int) -> str:
+def upsert_project(org_id: str, slug: str, title: str, item_count: int,
+                   source_pdf_path: str | None = None) -> str:
     """projects を (org_id, slug) で upsert し、project_id を返す。"""
+    row = {
+        "org_id": org_id, "slug": slug, "title": title or slug,
+        "status": "takeoff", "item_count": item_count,
+    }
+    if source_pdf_path:  # どの図面から起こしたかを案件に残す
+        row["source_pdf_path"] = source_pdf_path
     rows = _req(
         "POST", "projects",
-        body=[{
-            "org_id": org_id, "slug": slug, "title": title or slug,
-            "status": "takeoff", "item_count": item_count,
-        }],
+        body=[row],
         prefer="resolution=merge-duplicates,return=representation",
         params="?on_conflict=org_id,slug",
     )
@@ -100,11 +113,11 @@ def replace_takeoff_items(project_id: str, org_id: str, items: list[TakeoffItem]
 
 def persist_takeoff(
     *, org_slug: str, org_name: str, project_slug: str, title: str,
-    items: list[TakeoffItem],
+    items: list[TakeoffItem], source_pdf_path: str | None = None,
 ) -> dict:
     """org → project → takeoff_items を保存し、id 群と件数を返す。"""
     org_id = ensure_org(org_slug, org_name)
-    project_id = upsert_project(org_id, project_slug, title, len(items))
+    project_id = upsert_project(org_id, project_slug, title, len(items), source_pdf_path)
     n = replace_takeoff_items(project_id, org_id, items)
     return {"org_id": org_id, "project_id": project_id, "items": n}
 
@@ -139,3 +152,29 @@ def load_learned_aliases(org_slug: str, locale: str = "ja") -> dict:
             "unit": r.get("unit"), "raw": r.get("raw"),
         }
     return out
+
+
+def download_drawing(storage_path: str) -> bytes:
+    """Storage バケット drawings から設備図PDFを取ってくる（service_role）。
+
+    Vercel のリクエストボディ上限(4.5MB)を避けるため、ブラウザは Storage へ直接
+    アップロードし、API にはこのパスだけが渡る。パスの先頭は組織 slug。
+    """
+    conf = _conf()
+    if conf is None:
+        raise RuntimeError("Supabase is not configured")
+    base, key = conf
+    safe = storage_path.lstrip("/")
+    if ".." in safe:
+        raise RuntimeError("不正なパスです")
+    url = f"{base}/storage/v1/object/drawings/{urllib.parse.quote(safe)}"
+    req = urllib.request.Request(
+        url, method="GET",
+        headers={"apikey": key, "Authorization": f"Bearer {key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"図面の取得に失敗しました (HTTP {e.code}): {detail}") from None

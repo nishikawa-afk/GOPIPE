@@ -39,23 +39,41 @@ app.add_middleware(
 )
 
 
-def _save_upload(file: UploadFile | None) -> Path:
-    """アップロードPDFを一時保存。無ければ mock 用ダミーパスを返す。"""
+def _save_upload(file: UploadFile | None, storage_path: str = "") -> Path:
+    """設備図PDFを一時ファイルに置いてパスを返す。
+
+    storage_path が来たら Supabase Storage から取る（本線。Vercel の 4.5MB 制限を避けるため
+    ブラウザは Storage へ直接アップロードする）。file は小さいPDFの直POST用に残す。
+    どちらも無ければ mock 用のダミーパス。
+    """
+    tmpdir = Path(tempfile.gettempdir())
+    if storage_path:
+        from gopipe_takeoff import store
+
+        data = store.download_drawing(storage_path)
+        tmp = tmpdir / (Path(storage_path).name or "drawing.pdf")
+        tmp.write_bytes(data)
+        return tmp
     if file is None:
         return ROOT / "samples" / "dummy_設備図.pdf"
-    tmp = Path(tempfile.gettempdir()) / (file.filename or "upload.pdf")
+    tmp = tmpdir / (file.filename or "upload.pdf")
     tmp.write_bytes(file.file.read())
     return tmp
 
 
 def _items_json(items) -> list[dict]:
+    """明細＋整合チェックの指摘。指摘は画面で人に見せるためのもので、数量は書き換えない。"""
+    from gopipe_takeoff import validate_items as _vchk
+
+    flags = _vchk.check(items)
     return [
         {
             "category": it.category, "name": it.name, "spec": it.spec,
             "location": it.location, "quantity": it.quantity, "unit": it.unit,
             "confidence": round(it.confidence, 2),
+            "checks": flags.get(i, []),
         }
-        for it in items
+        for i, it in enumerate(items)
     ]
 
 
@@ -83,14 +101,23 @@ def _require_key(api_key: str | None, what: str) -> None:
         )
 
 
-def _takeoff(provider: str, file: UploadFile | None, api_key: str | None = None):
+def _takeoff(
+    provider: str,
+    file: UploadFile | None,
+    api_key: str | None = None,
+    storage_path: str = "",
+    org_slug: str = "",
+):
     p = (provider or "mock").strip().lower()
     if p not in _FREE_PROVIDERS:
         _require_key(api_key, f"provider={p}")
+    if storage_path:  # 他社の図面を引かせない。参照は必ずキー経由に閉じる。
+        _require_key(api_key, "Storage 上の図面の読み込み")
     os.environ["GOPIPE_LLM_PROVIDER"] = p or "mock"
+    os.environ["GOPIPE_ORG"] = org_slug or "default"  # どの会社の辞書を引くか
     from gopipe_takeoff import run_takeoff
 
-    pdf = _save_upload(file)
+    pdf = _save_upload(file, storage_path)
     return run_takeoff(str(pdf), str(OUT))
 
 
@@ -132,10 +159,11 @@ async def takeoff(
     org_slug: str = Form("default"),
     project_slug: str = Form("takeoff"),
     title: str = Form(""),
+    storage_path: str = Form(""),
     file: UploadFile | None = File(None),
     x_gopipe_key: str | None = Header(default=None),
 ):
-    result = _takeoff(provider, file, x_gopipe_key)
+    result = _takeoff(provider, file, x_gopipe_key, storage_path, org_slug)
     resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
     if persist:
         # 書き込みは service_role（RLSバイパス）で走る。無認証で開けない。
@@ -147,6 +175,7 @@ async def takeoff(
                 resp["persisted"] = store.persist_takeoff(
                     org_slug=org_slug, org_name=org_slug,
                     project_slug=project_slug, title=title, items=result.items,
+                    source_pdf_path=storage_path or None,
                 )
             except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
                 resp["persisted"] = {"error": str(e)}

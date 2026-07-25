@@ -46,3 +46,21 @@ def test_en_count_unit_ok():
     it = TakeoffItem(page=1, name="Gate Valve", spec="DN50", quantity=6, unit="ea",
                      category="Valve", confidence=0.9)
     assert check_item(it) == []
+
+
+def test_double_count_across_different_spec_wording():
+    """図面からの行と機器表からの行が、仕様欄の書き方違いで二重に残る事故を捕まえる。
+
+    ここを素通りさせると見積の数量が倍になる。数値は直さず、必ず人に見せる。
+    """
+    from gopipe_takeoff.validate_items import check
+    from gopipe_takeoff.models import TakeoffItem
+
+    items = [
+        TakeoffItem(page=1, name="給水管", spec="DN20", quantity=28, unit="m", category="給水"),
+        TakeoffItem(page=1, name="給水管", spec="GP-1", quantity=28, unit="m", category="給水"),
+        TakeoffItem(page=1, name="排水管", spec="DN75", quantity=22, unit="m", category="排水"),
+    ]
+    flags = check(items)
+    assert 1 in flags and any("二重計上" in s for s in flags[1])
+    assert 2 not in flags

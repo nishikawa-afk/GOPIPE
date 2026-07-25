@@ -49,6 +49,10 @@ def check(items: list[TakeoffItem]) -> dict[int, list[str]]:
     """各 index → issue リスト（issue のある行のみ）。重複の疑いも検出。"""
     out: dict[int, list[str]] = {}
     seen: dict[tuple, int] = {}
+    # 仕様欄の書き方だけが違う同一品目（例: 図面から「DN20」・機器表から「BV-1」）は
+    # 上の key では別物に見えてしまう。数量と単位まで一致する行は二重計上の疑いとして
+    # 必ず人に見せる。見積の数量が倍になる事故は、黙って通してはいけない。
+    by_qty: dict[tuple, int] = {}
     for i, it in enumerate(items):
         issues = check_item(it)
         key = ((it.name or "").strip(), (it.spec or "").strip(), (it.location or "").strip())
@@ -57,6 +61,12 @@ def check(items: list[TakeoffItem]) -> dict[int, list[str]]:
                 issues.append(f"重複の疑い（行{seen[key] + 1}と同一）")
             else:
                 seen[key] = i
+        qty_key = ((it.name or "").strip(), float(it.quantity or 0), (it.unit or "").strip())
+        if qty_key[0] and qty_key[1] > 0:
+            if qty_key in by_qty and by_qty[qty_key] != i and not any("重複" in s for s in issues):
+                issues.append(f"二重計上の疑い（行{by_qty[qty_key] + 1}と同じ数量）")
+            else:
+                by_qty.setdefault(qty_key, i)
         if issues:
             out[i] = issues
     return out

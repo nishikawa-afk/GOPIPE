@@ -20,6 +20,8 @@ export type TakeoffItem = {
   quantity: number;
   unit: string;
   confidence: number;
+  /** 整合チェックの指摘（二重計上の疑い・数量0・単位×カテゴリ不一致など） */
+  checks?: string[];
 };
 
 /** 🔴＝要確認。Streamlit 版と同じ 0.7 / 0.85 の線を守る。 */
@@ -27,4 +29,12 @@ export function confidenceLevel(c: number): "low" | "mid" | "high" {
   if (c < 0.7) return "low";
   if (c < 0.85) return "mid";
   return "high";
+}
+
+/**
+ * 要確認かどうか。確度が高くても、二重計上のような指摘が付いた行は必ず人に見せる。
+ * 数量が倍になる見積を黙って通さないための線引き。
+ */
+export function needsReview(it: TakeoffItem): boolean {
+  return confidenceLevel(it.confidence) === "low" || (it.checks?.length ?? 0) > 0;
 }

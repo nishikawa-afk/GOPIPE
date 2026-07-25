@@ -20,6 +20,16 @@ DEFAULT_PATH = Path(
 )
 
 
+def current_org() -> str:
+    """いま処理している会社（テナント）の slug。
+
+    堀は会社ごとに育つので、どの会社の辞書を引くかを間違えると
+    「使っているのに賢くならない」が静かに起きる。API はリクエストごとに
+    GOPIPE_ORG を立てる。
+    """
+    return os.environ.get("GOPIPE_ORG") or "default"
+
+
 def _norm(s: str | None) -> str:
     return unicodedata.normalize("NFKC", (s or "").strip()).replace(" ", "").replace("　", "")
 
@@ -36,7 +46,7 @@ def _read(path: str | Path) -> dict:
         return {}
 
 
-def load_aliases(path: str | Path | None = None, *, org: str = "default",
+def load_aliases(path: str | Path | None = None, *, org: str | None = None,
                  locale: str | None = None, remote: bool = True) -> dict:
     """指定ロケールの学習済み別名 {raw: info} を返す。ローカル＋（有効なら）Supabaseをマージ。
 
@@ -59,7 +69,7 @@ def load_aliases(path: str | Path | None = None, *, org: str = "default",
         try:
             from . import store
             if store.is_enabled():
-                out = {**out, **store.load_learned_aliases(org, locale=loc)}
+                out = {**out, **store.load_learned_aliases(org or current_org(), locale=loc)}
         except Exception:  # noqa: BLE001
             pass
     return out
@@ -96,7 +106,7 @@ def record_alias(
     try:  # Supabase 併用（設定時のみ）
         from . import store
         if hasattr(store, "record_learned_alias") and store.is_enabled():
-            store.record_learned_alias(org or "default", raw_n, canon, category, unit, locale=loc)
+            store.record_learned_alias(org or current_org(), raw_n, canon, category, unit, locale=loc)
             persisted = True
     except Exception:  # noqa: BLE001
         pass

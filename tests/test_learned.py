@@ -99,3 +99,61 @@ def test_record_alias_survives_readonly_fs(monkeypatch, tmp_path):
     monkeypatch.setattr("gopipe_takeoff.store.record_learned_alias", _record)
     assert L.record_alias("全熱交ユニット", "全熱交換器", path=ro, org="haruki") is True
     assert calls and calls[0][2] == "全熱交換器"
+
+
+def test_pipeline_merges_learned_aliases(monkeypatch, tmp_path):
+    """会社が育てた別名が、次の拾い出しの分類に効くこと。
+
+    ここが切れていると「直しても次回また同じ間違いが出る」＝堀が育たない。
+    Streamlit 版では UI 側で辞書に混ぜていたため、エンジン単体では抜けていた。
+    """
+    from gopipe_takeoff.pipeline import TakeoffPipeline
+
+    merged = {}
+
+    def _fake_load_aliases(*a, **k):
+        return {"全熱交ユニット": {"canonical": "全熱交換器", "category": "機器", "unit": "台"}}
+
+    monkeypatch.setattr("gopipe_takeoff.learned.load_aliases", _fake_load_aliases)
+    pipe = TakeoffPipeline()
+    monkeypatch.setattr(
+        pipe.dictionary, "add_learned", lambda a: merged.update(a) or len(a)
+    )
+    monkeypatch.setattr("gopipe_takeoff.pipeline.load_pdf", lambda p, grid=1: _EmptyDrawing())
+    monkeypatch.setattr("gopipe_takeoff.pipeline.extract", lambda *a, **k: [])
+    monkeypatch.setattr("gopipe_takeoff.pipeline.write_excel", lambda items, path: path)
+
+    pipe.run("/nonexistent.pdf", tmp_path)
+    assert "全熱交ユニット" in merged
+
+
+class _EmptyDrawing:
+    pages: list = []
+
+
+def test_current_org_follows_request(monkeypatch):
+    """会社の取り違えは他社の辞書を引くことになるので、env で明示的に切り替える。"""
+    from gopipe_takeoff.learned import current_org
+
+    monkeypatch.delenv("GOPIPE_ORG", raising=False)
+    assert current_org() == "default"
+    monkeypatch.setenv("GOPIPE_ORG", "haruki")
+    assert current_org() == "haruki"
+
+
+def test_company_wording_beats_builtin_dictionary():
+    """会社が直した呼び方は、組み込み辞書の別名関係より優先されること。
+
+    組み込み辞書は「ゲートバルブ」を「仕切弁」の別名として持つ。会社が
+    「うちはゲートバルブと呼ぶ」と直したのに仕切弁へ戻されると、
+    直した本人に「直しても無駄」と学習させてしまう＝定着が死ぬ。
+    """
+    d = TakeoffDictionary.from_yaml(DICT)
+    assert d.lookup("ゲートバルブ").canonical == "仕切弁"  # 組み込みの向き
+
+    d.add_learned(
+        {"仕切弁": {"canonical": "ゲートバルブ", "category": "弁類", "unit": "個", "raw": "仕切弁"}}
+    )
+    out = classify([TakeoffItem(page=1, name="仕切弁", quantity=6, unit="個")], d)
+    assert out[0].name == "ゲートバルブ"
+    assert out[0].category == "弁類"
