@@ -42,6 +42,12 @@ export default async function ProjectsPage() {
           <p className="m-0 text-[20px] font-black">{me.org.name}の物件</p>
         </div>
         <Link
+          href="/app/guide"
+          className="text-[13.5px] font-bold text-[var(--cyan)] hover:underline"
+        >
+          使い方
+        </Link>
+        <Link
           href="/app"
           className="rounded-[11px] bg-gradient-to-b from-[#ffab33] to-[var(--orange)] px-5 py-2.5 text-[15px] font-black text-[#241200]"
         >

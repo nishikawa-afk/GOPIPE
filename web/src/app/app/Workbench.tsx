@@ -218,6 +218,10 @@ export default function Workbench({
               覚えた言い換え
             </a>
             <span className="mx-2 opacity-40">|</span>
+            <a href="/app/guide" className="font-bold text-[var(--cyan)] hover:underline">
+              使い方
+            </a>
+            <span className="mx-2 opacity-40">|</span>
             {email}
           </p>
           <button onClick={logout} className="font-bold text-[var(--cyan)] hover:underline">
@@ -264,11 +268,17 @@ export default function Workbench({
           {/* 初めての人が、自分の図面を探さずにその場で試せるようにする。
               練習で会社の台帳を汚さないよう、物件名に「練習」を入れて使う運用。 */}
           <a
+            href="/app/guide"
+            className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--cyan)] px-4 py-2 text-[13.5px] font-bold text-[var(--cyan)] hover:bg-[rgba(86,204,242,0.08)]"
+          >
+            ▶ はじめての方へ：使い方を見る（3分）
+          </a>
+          <a
             href="/sample/practice-drawing.pdf"
             download="GoPipe練習用_中央ビル_1F給排水.pdf"
-            className="text-[13px] text-[var(--mut)] underline hover:text-[var(--cyan)]"
+            className="ml-4 text-[13px] text-[var(--mut)] underline hover:text-[var(--cyan)]"
           >
-            はじめての方へ：練習用の設備図をダウンロード
+            練習用の設備図をダウンロード
           </a>
         </div>
 

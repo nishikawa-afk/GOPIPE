@@ -17,9 +17,14 @@ export default async function DictionaryPage() {
           <p className="m-0 text-[12px] font-bold tracking-[0.3em] text-[var(--cyan)]">GOPIPE</p>
           <p className="m-0 text-[20px] font-black">{me.org.name}が覚えた言い換え</p>
         </div>
-        <Link href="/app" className="text-[14px] font-bold text-[var(--cyan)] hover:underline">
-          ← 拾い出しに戻る
-        </Link>
+        <span className="flex items-center gap-4">
+          <Link href="/app/guide" className="text-[13.5px] font-bold text-[var(--cyan)] hover:underline">
+            使い方
+          </Link>
+          <Link href="/app" className="text-[14px] font-bold text-[var(--cyan)] hover:underline">
+            ← 拾い出しに戻る
+          </Link>
+        </span>
       </header>
 
       <section className="py-8">
