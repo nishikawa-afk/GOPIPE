@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
  * ログインした人にだけ、その場かぎりの署名付きURLで見せる。
  */
 const CHAPTERS = [
-  { key: "ch1.mp4", title: "まず、入る", sec: "0:12", note: "メールとパスワードで入る" },
-  { key: "ch2.mp4", title: "図面を入れる", sec: "0:41", note: "選んで、物件名を入れて、実行" },
-  { key: "ch3.mp4", title: "うちの言葉に直す", sec: "0:56", note: "表の欄を押して打ち直す" },
-  { key: "ch4.mp4", title: "覚えさせる", sec: "0:36", note: "次から会社の言葉で出る" },
-  { key: "ch5.mp4", title: "翌日、つづきを開く", sec: "0:21", note: "物件一覧から昨日の表へ" },
-  { key: "ch6.mp4", title: "いつでも取り消せる", sec: "0:25", note: "覚え間違いは戻せる" },
+  { key: "ch1.mp4", title: "まず、入る", sec: "0:11", note: "メールとパスワードで入る" },
+  { key: "ch2.mp4", title: "図面を入れる", sec: "0:32", note: "選んで、物件名を入れて、実行" },
+  { key: "ch3.mp4", title: "うちの言葉に直す", sec: "0:59", note: "表の欄を押して打ち直す" },
+  { key: "ch4.mp4", title: "覚えさせる", sec: "0:34", note: "次から会社の言葉で出る" },
+  { key: "ch5.mp4", title: "翌日、つづきを開く", sec: "0:22", note: "物件一覧から昨日の表へ" },
+  { key: "ch6.mp4", title: "いつでも取り消せる", sec: "0:21", note: "覚え間違いは戻せる" },
 ];
 
 export default async function GuidePage() {
@@ -58,7 +58,7 @@ export default async function GuidePage() {
         </video>
 
         <p className="mt-3 mb-8 text-[13px] text-[var(--mut)]">
-          通し版 3分11秒 ／ 図面を入れる → 直す → 覚えさせる → 翌日つづきを開く
+          通し版 3分02秒 ／ 図面を入れる → 直す → 覚えさせる → 翌日つづきを開く
         </p>
 
         <h2 className="mb-3 text-[16px] font-black">章ごとに見る</h2>
