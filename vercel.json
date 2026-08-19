@@ -5,5 +5,10 @@
       "includeFiles": "{src,shared,prompts,api}/**"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index?__vpath=$1"
+    }
+  ]
 }
