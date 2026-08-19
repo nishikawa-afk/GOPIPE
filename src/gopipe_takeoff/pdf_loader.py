@@ -16,6 +16,15 @@ MIN_DPI = 72
 # DPI を上げても 5MB 制限に収まりやすい (細部が見えやすくなる)。
 DEFAULT_TILE_DPI = 300
 
+# ここを下回る DPI まで落ちたページは、そのまま送っても表の小さい文字が潰れて読めない。
+# 実測(2026-08-19 ハルキ実図面): A3 200dpi のスキャンは 112dpi まで落ち、
+# 図面に印刷された吹出口/吸込口表(12行22個)を 1 個も拾えず、存在しない記号まで出した。
+# 同じ図面を 3x3 タイル(各300dpi)にすると 12行22個が完全一致・確度0.9 になった。
+# → 落ちたページは自動でタイルに切り替える（呼び出し側の指定は不要）。
+AUTO_TILE_MIN_DPI = 150
+# 1 リクエストあたりの LLM 呼び出し数の上限（サーバレスの実行時間 300 秒を守るため）。
+AUTO_TILE_MAX_CALLS = 9
+
 
 def _enhance_png(data: bytes) -> bytes:
     """スキャン画像向けの軽い前処理（自動コントラスト＋鮮鋭化）。
@@ -99,6 +108,21 @@ def _render_tiles(page, *, grid: int, dpi: int, enhance: bool = False) -> list[T
     return tiles
 
 
+def auto_grid(used_dpi: int, *, tile_dpi: int = DEFAULT_TILE_DPI, page_count: int = 1) -> int:
+    """縮小されて読めなくなったページを、何分割にすれば読めるかを返す（1 なら分割しない）。
+
+    - 目標 DPI に届く最小の分割数を選ぶ（面積比で byte 上限に収まる）
+    - 1 リクエストの LLM 呼び出しを AUTO_TILE_MAX_CALLS 以下に抑える（実行時間 300 秒の壁）
+    """
+    import math
+
+    if used_dpi >= AUTO_TILE_MIN_DPI:
+        return 1
+    need = math.ceil(tile_dpi / max(used_dpi, 1))
+    budget = math.isqrt(max(AUTO_TILE_MAX_CALLS // max(page_count, 1), 1))
+    return max(1, min(need, budget))
+
+
 def load_pdf(
     path: str | Path,
     *,
@@ -125,6 +149,7 @@ def load_pdf(
 
     if fitz is not None and path.exists():
         doc = fitz.open(path)
+        page_count = doc.page_count
         for i, page in enumerate(doc, start=1):
             data, w, h, used_dpi = _render_pixmap_within_limit(page, dpi=dpi)
             if used_dpi != dpi:
@@ -137,9 +162,23 @@ def load_pdf(
                     data = _enh
                     logger.info("page %d: scan detected → image enhanced (contrast+sharpen)", i)
             tiles: list[Tile] = []
-            if grid > 1:
-                logger.info("page %d: rendering %dx%d tiles at %d dpi", i, grid, grid, tile_dpi)
-                tiles = _render_tiles(page, grid=grid, dpi=tile_dpi, enhance=is_scan)
+            page_grid = grid
+            if page_grid <= 1 and used_dpi < AUTO_TILE_MIN_DPI:
+                # 縮小されて読めなくなったページだけ、自動でタイルに切り替える
+                page_grid = auto_grid(used_dpi, tile_dpi=tile_dpi, page_count=page_count)
+                if page_grid > 1:
+                    logger.info(
+                        "page %d: %ddpi まで縮小されたため自動でタイル分割に切替 (grid=%d)",
+                        i, used_dpi, page_grid,
+                    )
+                else:
+                    logger.warning(
+                        "page %d: %ddpi まで縮小されたが、ページ数が多いためタイル分割を見送り"
+                        "（表の数量が読めない可能性が高い）", i, used_dpi,
+                    )
+            if page_grid > 1:
+                logger.info("page %d: rendering %dx%d tiles at %d dpi", i, page_grid, page_grid, tile_dpi)
+                tiles = _render_tiles(page, grid=page_grid, dpi=tile_dpi, enhance=is_scan)
             pages.append(
                 DrawingPage(
                     page=i, width=w, height=h, text=text, image_png=data, tiles=tiles,
