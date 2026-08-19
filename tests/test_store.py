@@ -49,10 +49,13 @@ def test_persist_takeoff_builds_expected_calls(monkeypatch):
     out = store.persist_takeoff(
         org_slug="acme", org_name="ACME", project_slug="p1", title="T", items=items
     )
-    assert out == {"org_id": "org-1", "project_id": "proj-1", "items": 2}
+    assert out["org_id"] == "org-1"
+    assert out["project_id"] == "proj-1"
+    assert out["drawing_id"] is None
+    assert out["items"] == 2
 
     seq = [(m, p) for (m, p, *_rest) in calls]
-    assert ("POST", "organizations") in seq
+    assert ("GET", "organizations") in seq  # 既存会社は引くだけ（会社名を塗り潰さない）
     assert ("POST", "projects") in seq
     # 既存削除 → 再挿入の順
     assert seq.index(("DELETE", "takeoff_items")) < seq.index(("POST", "takeoff_items"))
@@ -64,7 +67,13 @@ def test_persist_takeoff_builds_expected_calls(monkeypatch):
     assert all(r["org_id"] == "org-1" and r["project_id"] == "proj-1" for r in rows)
 
 
-def test_persist_empty_items_skips_insert(monkeypatch):
+def test_persist_empty_items_never_deletes_existing(monkeypatch):
+    """0件のときに既存明細を消さないこと。
+
+    旧仕様は「0件でも DELETE する」だった。AI側の一時障害で0件が返った瞬間に、
+    昨日までの拾い出しと、そこに入っていた人の修正が丸ごと消える。
+    実際に本番で Anthropic の 500 により0件が返る事象が起きている。
+    """
     calls = []
 
     def fake_req(method, path, *, body=None, prefer="", params=""):
@@ -80,6 +89,76 @@ def test_persist_empty_items_skips_insert(monkeypatch):
         org_slug="acme", org_name="ACME", project_slug="p1", title="T", items=[]
     )
     assert out["items"] == 0
-    # DELETE は走るが、空なので POST takeoff_items はしない
-    assert ("DELETE", "takeoff_items") in calls
+    assert ("DELETE", "takeoff_items") not in calls
     assert ("POST", "takeoff_items") not in calls
+
+
+def test_second_drawing_does_not_wipe_the_first(monkeypatch):
+    """2枚目の図面を入れても、1枚目の明細を消さないこと。"""
+    deletes = []
+
+    def fake_req(method, path, *, body=None, prefer="", params=""):
+        if method == "DELETE":
+            deletes.append((path, params))
+        if path == "organizations":
+            return [{"id": "org-1"}]
+        if path == "projects":
+            return [{"id": "proj-1"}]
+        if path == "drawings":
+            return [{"id": "draw-2"}]
+        return None
+
+    monkeypatch.setattr(store, "_req", fake_req)
+    items = [TakeoffItem(page=1, name="給水管", quantity=10, unit="m", category="給水")]
+    out = store.persist_takeoff(
+        org_slug="acme", org_name="ACME", project_slug="p1", title="T",
+        items=items, source_pdf_path="acme/2枚目.pdf",
+    )
+    assert out["drawing_id"] == "draw-2"
+    # 消すのは「その図面ぶん」だけ。案件まるごとではない。
+    assert deletes == [("takeoff_items", "?drawing_id=eq.draw-2")]
+
+def test_ensure_org_does_not_overwrite_existing_name(monkeypatch):
+    """既存の会社名を API 呼び出しのたびに slug で塗り潰さないこと。
+
+    upsert にすると画面の会社名が「株式会社ハルキ」→「haruki」に化ける。
+    """
+    calls = []
+
+    def fake_req(method, path, *, body=None, prefer="", params=""):
+        calls.append((method, path, body))
+        if method == "GET" and path == "organizations":
+            return [{"id": "org-9"}]
+        return None
+
+    monkeypatch.setattr(store, "_req", fake_req)
+    assert store.ensure_org("haruki", "haruki") == "org-9"
+    assert [m for m, _p, _b in calls] == ["GET"]
+
+
+def test_drawing_keeps_human_file_name(monkeypatch):
+    """置き場所は半角英数でも、人が見る名前は元のまま残すこと。
+
+    Supabase Storage は日本語のキーを Invalid key で弾く。だからキーは英数に
+    落とすが、それをそのまま画面に出すと自分が上げた図面を判別できなくなる。
+    """
+    seen = {}
+
+    def fake_req(method, path, *, body=None, prefer="", params=""):
+        if path == "organizations":
+            return [{"id": "org-1"}]
+        if path == "projects":
+            return [{"id": "proj-1"}]
+        if path == "drawings":
+            seen.update(body[0])
+            return [{"id": "draw-1"}]
+        return None
+
+    monkeypatch.setattr(store, "_req", fake_req)
+    store.persist_takeoff(
+        org_slug="haruki", org_name="株式会社ハルキ", project_slug="p", title="T",
+        items=[TakeoffItem(page=1, name="給水管", quantity=1, unit="m")],
+        source_pdf_path="haruki/2026-07-26_1_drawing.pdf",
+        file_name="中央ビル改修_1F給排水.pdf",
+    )
+    assert seen["file_name"] == "中央ビル改修_1F給排水.pdf"

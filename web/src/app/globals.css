@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* 共有ハブ（gopipe.vercel.app/share）と同じ配色。別サイトに見えないよう揃える。 */
+:root {
+  --navy: #0b1120;
+  --navy2: #101a30;
+  --panel: #13203c;
+  --line: #20304f;
+  --cyan: #56ccf2;
+  --orange: #f7941e;
+  --red: #d7261e;
+  --ink: #f4f8fd;
+  --mut: #93a7c6;
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-navy2: var(--navy2);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-cyan: var(--cyan);
+  --color-orange: var(--orange);
+  --color-red: var(--red);
+  --color-ink: var(--ink);
+  --color-mut: var(--mut);
+}
+
+html,
+body {
+  background:
+    linear-gradient(rgba(11, 17, 32, 0.9), rgba(11, 17, 32, 0.94)),
+    repeating-linear-gradient(0deg, transparent 0 43px, rgba(86, 204, 242, 0.05) 43px 44px),
+    repeating-linear-gradient(90deg, transparent 0 43px, rgba(86, 204, 242, 0.05) 43px 44px),
+    var(--navy);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic UI",
+    "Noto Sans JP", system-ui, sans-serif;
+  line-height: 1.7;
+}
+
+/* 数量など、桁を比べる欄は等幅で読ませる */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

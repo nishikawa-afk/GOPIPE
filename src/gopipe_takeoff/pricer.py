@@ -36,6 +36,7 @@ class PriceEntry:
     unit_price: float
     unit: str = ""
     material_ratio: float = 0.5
+    labor_hours: float = 0.0  # 歩掛: 人工/単位（0なら人工数は非計上）
     spec: str | None = None
     category: str | None = None
     name: str | None = None  # 完全一致 (部分一致は今は実装しない)
@@ -78,6 +79,7 @@ class PriceQuote:
     material_ratio: float
     source: str  # どのエントリで引いたか説明 (UI / Excel に出す)
     notes: str = ""
+    labor_hours: float = 0.0  # 歩掛: 人工/単位
 
     def total(self, quantity: float) -> float:
         return self.unit_price * quantity
@@ -87,6 +89,9 @@ class PriceQuote:
 
     def labor(self, quantity: float) -> float:
         return self.total(quantity) * (1.0 - self.material_ratio)
+
+    def man_hours(self, quantity: float) -> float:
+        return self.labor_hours * quantity
 
 
 @dataclass
@@ -124,6 +129,7 @@ class Pricer:
             material_ratio=best.material_ratio,
             source=_describe_entry(best),
             notes=best.notes,
+            labor_hours=best.labor_hours,
         )
 
     @classmethod
@@ -140,11 +146,16 @@ class Pricer:
                 ratio = float(row.get("material_ratio", 0.5))
             except (TypeError, ValueError):
                 ratio = 0.5
+            try:
+                lh = float(row.get("labor_hours", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                lh = 0.0
             entries.append(
                 PriceEntry(
                     unit_price=float(row["unit_price"]),
                     unit=str(row.get("unit", "")).strip(),
                     material_ratio=max(0.0, min(1.0, ratio)),
+                    labor_hours=max(0.0, lh),
                     spec=_clean_opt(row.get("spec")),
                     category=_clean_opt(row.get("category")),
                     name=_clean_opt(row.get("name")),

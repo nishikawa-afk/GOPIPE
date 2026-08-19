@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import unicodedata
 from pathlib import Path
 
 from llm_client import LLMClient, LLMMessage, get_llm_client
 
 from .equipment_table import extract_from_text
+from .locale import resolve as resolve_knowledge
 from .models import BBox, Drawing, DrawingPage, TakeoffItem, Tile
 
 logger = logging.getLogger("gopipe.extractor")
@@ -31,21 +33,73 @@ def _load_prompt(path: Path) -> str:
     return ""
 
 
+def _format_learned_hint(aliases: dict, *, en: bool = False, limit: int = 300) -> str:
+    """学習の堀（過去の修正）を抽出プロンプトに差し込む few-shot ヒント文。
+
+    limit は「プロンプトが長くなりすぎない上限」であって、堀の上限ではない。
+    25件で切っていた頃は、26件目以降を教えても永久に効かず、しかも載る25件が
+    実行ごとに変わって「昨日は直ったのに今日は戻る」を起こしていた。
+    呼び出し側（store.load_learned_aliases）が hits の多い順で渡す。
+    """
+    lines: list[str] = []
+    for raw, info in list((aliases or {}).items())[:limit]:
+        info = info or {}
+        canon = (info.get("canonical") or "").strip()
+        if not canon:
+            continue
+        disp = info.get("raw", raw)
+        cat = info.get("category")
+        if en:
+            tag = f" ({cat})" if cat else ""
+            lines.append(f'- if the drawing shows "{disp}", treat it as "{canon}"{tag}')
+        else:
+            tag = f"（{cat}）" if cat else ""
+            lines.append(f'- 図面に "{disp}" とあれば名称「{canon}」{tag} として扱う')
+    if not lines:
+        return ""
+    header = ("\n\n## Confirmed normalizations for this org (from past corrections — always follow)\n"
+              if en else
+              "\n\n## この組織で確定済みの正規化（過去の修正＝必ず従う）\n")
+    return header + "\n".join(lines)
+
+
+def _learned_hint() -> str:
+    """現在ロケールの学習別名から few-shot ヒントを生成（無ければ空）。"""
+    try:
+        from .learned import load_aliases
+        from .locale import current_locale
+        return _format_learned_hint(load_aliases(), en=(current_locale() == "en"))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _strip_code_fence(text: str) -> str:
     m = re.search(r"```(?:json)?\s*(.+?)\s*```", text, re.DOTALL)
     return m.group(1) if m else text
 
 
+class ExtractionFailed(RuntimeError):
+    """LLM の応答を項目に落とせなかった。「0件」と区別するために投げる。
+
+    黙って [] を返すと、読めていないページが「その図面には何も無かった」に化ける。
+    拾い出しで一番怖いのは間違いより「無かったことになる」ことなので、必ず表に出す。
+    """
+
+
 def _parse_response(raw: str, *, page_number: int, drop_bbox: bool = False) -> list[TakeoffItem]:
     """LLM レスポンスの JSON を TakeoffItem のリストにする。"""
     if not raw:
-        return []
+        raise ExtractionFailed(f"{page_number}ページ: AIの応答が空でした")
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return []
+        tail = raw.strip()[-80:]
+        raise ExtractionFailed(
+            f"{page_number}ページ: AIの応答を読み取れませんでした"
+            f"（途中で切れた可能性があります。末尾: …{tail}）"
+        ) from None
     if not isinstance(data, list):
-        return []
+        raise ExtractionFailed(f"{page_number}ページ: AIの応答の形式が想定と違いました")
     items: list[TakeoffItem] = []
     for row in data:
         if not isinstance(row, dict):
@@ -88,9 +142,28 @@ def _call_llm_for_image(
             images=[image_png] if image_png else [],
         ),
     ]
-    resp = client.complete(msgs, max_tokens=max_tokens, temperature=0.0)
-    raw = _strip_code_fence(resp.text).strip()
-    return _parse_response(raw, page_number=page_number, drop_bbox=drop_bbox)
+    # LLM 側の一時障害（500/529/429）は珍しくない。ここで素通しすると
+    # 「3分待った末に英語のエラー」になり、現場は理由が分からないまま手作業へ戻る。
+    # 数回だけ待って試し、それでも駄目ならページ単位の失敗として日本語で伝える。
+    last: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = client.complete(msgs, max_tokens=max_tokens, temperature=0.0)
+            raw = _strip_code_fence(resp.text).strip()
+            return _parse_response(raw, page_number=page_number, drop_bbox=drop_bbox)
+        except ExtractionFailed:
+            raise
+        except Exception as e:  # noqa: BLE001  LLM SDK の例外型に依存しない
+            last = e
+            logger.warning(
+                "page %d: AI呼び出しに失敗 (%d回目): %s", page_number, attempt + 1, e
+            )
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    raise ExtractionFailed(
+        f"{page_number}ページ: AIの呼び出しに繰り返し失敗しました"
+        f"（{type(last).__name__}）。時間をおいて実行し直してください。"
+    )
 
 
 def _norm(s: str | None) -> str:
@@ -182,16 +255,22 @@ def reconcile_with_text_table(
             added += 1
             continue
         matched += 1
-        if not _qty_close(m.quantity, ti.quantity):
+        disagreed = not _qty_close(m.quantity, ti.quantity)
+        if disagreed:
             logger.warning(
-                "page %d: 数量ズレ '%s' vision=%s 機器表=%s → 機器表を採用",
+                "page %d: 数量ズレ '%s' vision=%s 機器表=%s → 機器表を採用（図面側の読みは残す）",
                 page, m.name, m.quantity, ti.quantity,
             )
             mismatched += 1
+            # 図面側の読みを捨てない。捨てると「最も検算すべき行」が
+            # 🟢そのままでOK に化けて、人が確認する機会そのものが消える。
+            m.qty_vision = m.quantity
         m.quantity = ti.quantity
         if ti.spec and not (m.spec and m.spec.strip()):
             m.spec = ti.spec
-        m.confidence = max(m.confidence, 0.95)
+        # 一致したときだけ「機器表で裏が取れた」として信頼度を上げる。
+        # 食い違った行を 0.95 にするのは、人に嘘の安心を渡すことになる。
+        m.confidence = max(m.confidence, 0.95) if not disagreed else min(m.confidence, 0.6)
         m.source = "reconciled"
     logger.info(
         "page %d: 機器表突合 matched=%d (ズレ%d) added=%d", page, matched, mismatched, added
@@ -279,6 +358,7 @@ def extract(
     client: LLMClient | None = None,
     two_pass: bool = False,
     use_text_table: bool = True,
+    failures: list[str] | None = None,
 ) -> list[TakeoffItem]:
     """各ページを LLM に投げて TakeoffItem のリストを返す。
 
@@ -295,8 +375,8 @@ def extract(
     抽出し、vision 結果と突合する（数量・型番を機器表優先で採用、拾い漏れを補完）。
     """
     client = client or get_llm_client()
-    system_prompt = _load_prompt(PROMPT_PATH)
-    verify_prompt  = _load_prompt(VERIFY_PROMPT_PATH) if two_pass else ""
+    system_prompt = _load_prompt(resolve_knowledge("extraction.txt")) + _learned_hint()
+    verify_prompt  = _load_prompt(resolve_knowledge("verification.txt")) if two_pass else ""
     all_items: list[TakeoffItem] = []
 
     for page in drawing.pages:
@@ -312,42 +392,61 @@ def extract(
                     "page %d: extracting tile (r=%d, c=%d) of %dx%d",
                     page.page, tile.row, tile.col, tile.grid, tile.grid,
                 )
-                tile_items.extend(
-                    _call_llm_for_image(
-                        client,
-                        system_prompt,
-                        image_png=tile.image_png,
-                        user_text=_tile_user_text(page, tile, symbol_codes),
-                        page_number=page.page,
-                        drop_bbox=True,
+                try:
+                    tile_items.extend(
+                        _call_llm_for_image(
+                            client,
+                            system_prompt,
+                            image_png=tile.image_png,
+                            user_text=_tile_user_text(page, tile, symbol_codes),
+                            page_number=page.page,
+                            drop_bbox=True,
+                        )
                     )
-                )
+                except ExtractionFailed as e:
+                    # このタイルだけ諦める。他のタイルの結果は捨てない。
+                    logger.error("page %d: タイル(r=%d,c=%d)を読み取れず: %s", page.page, tile.row, tile.col, e)
+                    if failures is not None:
+                        failures.append(str(e))
             before = len(tile_items)
             page_items = _dedupe_items(tile_items)
             logger.info("page %d: pass1 deduped %d → %d items", page.page, before, len(page_items))
         else:
-            page_items = _call_llm_for_image(
-                client,
-                system_prompt,
-                image_png=page.image_png,
-                user_text=_whole_page_user_text(page, symbol_codes),
-                page_number=page.page,
-                drop_bbox=False,
-            )
+            try:
+                page_items = _call_llm_for_image(
+                    client,
+                    system_prompt,
+                    image_png=page.image_png,
+                    user_text=_whole_page_user_text(page, symbol_codes),
+                    page_number=page.page,
+                    drop_bbox=False,
+                )
+            except ExtractionFailed as e:
+                # このページは「0件」ではなく「読めていない」。区別して必ず人に伝える。
+                logger.error("page %d: 読み取り失敗: %s", page.page, e)
+                if failures is not None:
+                    failures.append(str(e))
+                continue
             logger.info("page %d: pass1 extracted %d items", page.page, len(page_items))
 
         # ---- Pass 2: Verification (two_pass=True のみ) ----
         if two_pass and verify_prompt and page.image_png:
             logger.info("page %d: running verification pass ...", page.page)
-            extra_items = _call_llm_for_image(
-                client,
-                verify_prompt,
-                image_png=page.image_png,
-                user_text=_verification_user_text(page, page_items, symbol_codes),
-                page_number=page.page,
-                drop_bbox=False,
-                max_tokens=VERIFY_MAX_TOKENS,
-            )
+            try:
+                extra_items = _call_llm_for_image(
+                    client,
+                    verify_prompt,
+                    image_png=page.image_png,
+                    user_text=_verification_user_text(page, page_items, symbol_codes),
+                    page_number=page.page,
+                    drop_bbox=False,
+                    max_tokens=VERIFY_MAX_TOKENS,
+                )
+            except ExtractionFailed as e:
+                logger.error("page %d: 漏れ確認パス失敗: %s", page.page, e)
+                if failures is not None:
+                    failures.append(str(e))
+                extra_items = []
             logger.info("page %d: verification pass found %d additional items", page.page, len(extra_items))
             combined = page_items + extra_items
             before = len(combined)

@@ -61,6 +61,10 @@ def test_estimate_has_positive_total(tmp_path):
     assert est.subtotal > 0
     assert est.total >= est.subtotal  # 諸経費・消費税が上乗せされる
     assert est.unpriced == []  # 単価未設定が無い
+    # 高度化: 諸経費内訳の整合・材工合計≒小計・歩掛による総人工
+    assert est.site_overhead + est.general_overhead == est.overhead
+    assert abs((est.material_total + est.labor_total) - est.subtotal) <= len(est.lines)
+    assert est.man_hours > 0  # mock の 大便器/洗面器 に歩掛が付く
 
 
 def test_application_draft_contains_key_fields(tmp_path):

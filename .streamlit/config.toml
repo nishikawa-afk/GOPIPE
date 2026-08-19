@@ -1,0 +1,14 @@
+# GOPIPE 公開UI テーマ — 「未来へPIPEを架ける」ダークSF×ネオン。
+[theme]
+base = "dark"
+primaryColor = "#22D3EE"
+backgroundColor = "#0A1020"
+secondaryBackgroundColor = "#111A33"
+textColor = "#E6F0FF"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

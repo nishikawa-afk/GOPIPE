@@ -10,12 +10,13 @@
 from __future__ import annotations
 
 import datetime
+import hmac
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,44 +24,141 @@ for _p in (ROOT / "src", ROOT / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+from gopipe_takeoff.locale import resolve as _kpath  # noqa: E402
+
 # Vercel 等サーバレスは /tmp 以外が読取専用。出力 xlsx は応答に含めない副産物なので
 # 書込可能な一時ディレクトリへ逃がす（run_takeoff が out_dir を mkdir する）。
 OUT = Path(tempfile.gettempdir()) / "gopipe_out"
 
 app = FastAPI(title="GOPIPE API", version="0.1.0")
+# 画面は同一オリジンの Next.js 中継を通るので、ブラウザから直接叩く必要はない。
+# "*" のままだと、どのサイトからでも本番APIを叩けてしまう。
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "GOPIPE_ALLOWED_ORIGINS",
+        "https://gopipe-web.vercel.app,https://gopipe.vercel.app,http://localhost:3210",
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番では Vercel ドメインに絞る
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def _save_upload(file: UploadFile | None) -> Path:
-    """アップロードPDFを一時保存。無ければ mock 用ダミーパスを返す。"""
+def _save_upload(file: UploadFile | None, storage_path: str = "") -> Path:
+    """設備図PDFを一時ファイルに置いてパスを返す。
+
+    storage_path が来たら Supabase Storage から取る（本線。Vercel の 4.5MB 制限を避けるため
+    ブラウザは Storage へ直接アップロードする）。file は小さいPDFの直POST用に残す。
+    どちらも無ければ mock 用のダミーパス。
+    """
+    tmpdir = Path(tempfile.gettempdir())
+    if storage_path:
+        from gopipe_takeoff import store
+
+        data = store.download_drawing(storage_path)
+        tmp = tmpdir / (Path(storage_path).name or "drawing.pdf")
+        tmp.write_bytes(data)
+        return tmp
     if file is None:
         return ROOT / "samples" / "dummy_設備図.pdf"
-    tmp = Path(tempfile.gettempdir()) / (file.filename or "upload.pdf")
+    tmp = tmpdir / (file.filename or "upload.pdf")
     tmp.write_bytes(file.file.read())
     return tmp
 
 
 def _items_json(items) -> list[dict]:
+    """明細＋整合チェックの指摘。指摘は画面で人に見せるためのもので、数量は書き換えない。"""
+    from gopipe_takeoff import validate_items as _vchk
+
+    flags = _vchk.check(items)
     return [
         {
             "category": it.category, "name": it.name, "spec": it.spec,
             "location": it.location, "quantity": it.quantity, "unit": it.unit,
             "confidence": round(it.confidence, 2),
+            "checks": flags.get(i, []),
+            # 学習の鍵。表示名を鍵にすると、直すたびに別部材まで巻き添えで化ける。
+            "raw_name": it.raw_name or it.name,
+            "qty_vision": it.qty_vision,
+            "page": it.page,
         }
-        for it in items
+        for i, it in enumerate(items)
     ]
 
 
-def _takeoff(provider: str, file: UploadFile | None):
-    os.environ["GOPIPE_LLM_PROVIDER"] = provider or "mock"
+# 無認証で開放してよいプロバイダ（自社の LLM キーを消費しない＝課金されない）。
+# claude / openai は ANTHROPIC_API_KEY 等を消費するので、必ずキーゲートを通す。
+_FREE_PROVIDERS = {"", "mock"}
+
+
+def _require_key(api_key: str | None, what: str) -> None:
+    """課金・書き込みを伴う操作にサーバ側キーを要求する（fail-closed）。
+
+    GOPIPE_API_KEY が未設定なら「誰でも自社キーで Claude を叩ける」状態なので、
+    未設定そのものを 503 で拒否する。mock デモは無認証のまま通す。
+    """
+    expected = os.environ.get("GOPIPE_API_KEY", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{what} は停止中です（サーバ側 GOPIPE_API_KEY 未設定）。mock は利用できます。",
+        )
+    if not api_key or not hmac.compare_digest(api_key, expected):
+        raise HTTPException(
+            status_code=401,
+            detail=f"{what} には x-gopipe-key ヘッダが必要です（provider=mock は不要）。",
+        )
+
+
+def _require_org_read(org_slug: str, api_key: str | None) -> None:
+    """会社を指定して辞書を引く操作は鍵必須（他社の育てた辞書を覗かせない）。"""
+    if org_slug:
+        _require_key(api_key, f"会社({org_slug})の辞書の参照")
+
+
+def _dictionary_for(org_slug: str = ""):
+    """その会社の辞書（組み込み＋会社が育てた別名）を1か所で組み立てる。
+
+    ここを通さない経路があると、覚えた呼び方が「拾い出しでは効くのに見積では戻る」
+    という形で崩れる。classify を呼ぶ全経路はこの関数を使うこと。
+    """
+    from gopipe_takeoff.dictionary import TakeoffDictionary
+    from gopipe_takeoff.learned import load_aliases
+
+    if org_slug:
+        os.environ["GOPIPE_ORG"] = org_slug
+    d = TakeoffDictionary.from_yaml(_kpath("dictionary.yaml"))
+    try:
+        learned = load_aliases()
+        if learned:
+            d.add_learned(learned)
+    except Exception:  # noqa: BLE001  堀が引けなくても拾い出しは続ける
+        pass
+    return d
+
+
+def _takeoff(
+    provider: str,
+    file: UploadFile | None,
+    api_key: str | None = None,
+    storage_path: str = "",
+    org_slug: str = "",
+):
+    p = (provider or "mock").strip().lower()
+    if p not in _FREE_PROVIDERS:
+        _require_key(api_key, f"provider={p}")
+    if storage_path:  # 他社の図面を引かせない。参照は必ずキー経由に閉じる。
+        _require_key(api_key, "Storage 上の図面の読み込み")
+    os.environ["GOPIPE_LLM_PROVIDER"] = p or "mock"
+    os.environ["GOPIPE_ORG"] = org_slug or "default"  # どの会社の辞書を引くか
     from gopipe_takeoff import run_takeoff
 
-    pdf = _save_upload(file)
+    pdf = _save_upload(file, storage_path)
     return run_takeoff(str(pdf), str(OUT))
 
 
@@ -70,6 +168,16 @@ def root():
     from fastapi.responses import RedirectResponse
 
     return RedirectResponse(url="/docs")
+
+
+@app.get("/share", include_in_schema=False)
+def share():
+    # 社員・クライアント共有用の公開ハブ（マンガ・使い方動画・デモ導線・共有文）。
+    # 自己完結HTML。ログイン不要で誰でも閲覧できるよう素のHTMLResponseで返す。
+    from fastapi.responses import HTMLResponse
+
+    html = (Path(__file__).resolve().parent / "share.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
 
 
 @app.get("/health")
@@ -92,11 +200,19 @@ async def takeoff(
     org_slug: str = Form("default"),
     project_slug: str = Form("takeoff"),
     title: str = Form(""),
+    storage_path: str = Form(""),
+    file_name: str = Form(""),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key, storage_path, org_slug)
     resp: dict = {"count": len(result.items), "items": _items_json(result.items)}
+    # 読めなかったページは黙って落とさない。「0件」と「読めていない」は別物。
+    if getattr(result, "failures", None):
+        resp["warnings"] = result.failures
     if persist:
+        # 書き込みは service_role（RLSバイパス）で走る。無認証で開けない。
+        _require_key(x_gopipe_key, "persist=true")
         from gopipe_takeoff import store
 
         if store.is_enabled():
@@ -104,6 +220,9 @@ async def takeoff(
                 resp["persisted"] = store.persist_takeoff(
                     org_slug=org_slug, org_name=org_slug,
                     project_slug=project_slug, title=title, items=result.items,
+                    source_pdf_path=storage_path or None,
+                    file_name=file_name or None,
+                    warnings=getattr(result, "failures", None),
                 )
             except Exception as e:  # 抽出は成功済み。保存失敗で全体は落とさない
                 resp["persisted"] = {"error": str(e)}
@@ -117,12 +236,13 @@ async def estimate(
     provider: str = Form("mock"),
     overhead: float = Form(0.10),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.estimate import build_estimate
     from gopipe_takeoff.pricer import Pricer
 
-    result = _takeoff(provider, file)
-    pricer = Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml")
+    result = _takeoff(provider, file, x_gopipe_key)
+    pricer = Pricer.from_yaml(_kpath("unit_prices.yaml"))
     est = build_estimate(result.items, pricer, overhead_rate=overhead)
     return {
         "subtotal": est.subtotal,
@@ -152,10 +272,11 @@ async def application(
     address: str = Form(""),
     work_type: str = Form("改造"),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.application import ProjectInfo, build_application_markdown
 
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     proj = ProjectInfo(
         municipality=municipality, contractor_name=contractor_name,
         contractor_number=contractor_number, chief_engineer=chief_engineer,
@@ -170,6 +291,7 @@ async def maintenance(
     installed_year: int = Form(2008),
     current_year: int = Form(0),
     file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
 ):
     from gopipe_takeoff.maintenance import (
         build_ledger,
@@ -179,7 +301,7 @@ async def maintenance(
     )
 
     cy = current_year or datetime.date.today().year
-    result = _takeoff(provider, file)
+    result = _takeoff(provider, file, x_gopipe_key)
     table, plans = load_service_life()
     ledger = build_ledger(result.items, installed_year, table)
     plan = recommend_plan(ledger, plans, current_year=cy)
@@ -225,7 +347,13 @@ async def emergency(symptom: str = Form(...)):
 
 
 @app.post("/insulation")
-async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
+async def insulation(
+    rooms: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """部屋寸法/面積（LiDAR・手測り）→ 断熱面積(壁/天井/床 m²)の拾い出し＋見積。
 
     rooms 例: [{"name":"LDK","width_m":5.4,"depth_m":4.2,"height_m":2.5,
@@ -241,10 +369,10 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(rooms_from_dicts(rooms)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -255,7 +383,13 @@ async def insulation(rooms: list[dict] = Body(...), overhead: float = 0.10):
 
 
 @app.post("/site_measure")
-async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10):
+async def site_measure(
+    measures: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """現地実測（LiDAR/巻尺）→ 空調・配管の拾い出し＋見積。
 
     measures 例: [{"kind":"角ダクト","name":"角ダクト","width_mm":500,"height_mm":400,"length_m":10},
@@ -270,10 +404,10 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
 
     items = classify(
         items_from_measures(measures),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -284,7 +418,13 @@ async def site_measure(measures: list[dict] = Body(...), overhead: float = 0.10)
 
 
 @app.post("/riser")
-async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
+async def riser(
+    risers: list[dict] = Body(...),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """系統図×階高 → 立管・隠蔽配管の延長/継手/弁を積算した拾い出し＋見積。
 
     平面図に長さが出ない立管を 階高×階数×本数 で延長(m)化し、継手・弁も階数比例で積算する。
@@ -301,10 +441,10 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
 
     items = classify(
         to_takeoff_items(risers_from_dicts(risers)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -315,7 +455,13 @@ async def riser(risers: list[dict] = Body(...), overhead: float = 0.10):
 
 
 @app.post("/legend_count")
-async def legend_count(file: UploadFile | None = File(None), overhead: float = 0.10):
+async def legend_count(
+    file: UploadFile | None = File(None),
+    overhead: float = 0.10,
+    org_slug: str = "",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    _require_org_read(org_slug, x_gopipe_key)
     """凡例（記号→名称）を解析し、テキスト層の記号出現数を機械カウント → 個数モノの拾い出し＋見積。
 
     ベクターPDF専用（テキスト層が必要）。スキャン図やテキスト層が無い場合は 0 件を返す。
@@ -333,10 +479,10 @@ async def legend_count(file: UploadFile | None = File(None), overhead: float = 0
                 "note": "ベクターPDF（テキスト層あり）をアップロードしてください"}
     items = classify(
         count_from_pdf(str(pdf)),
-        TakeoffDictionary.from_yaml(ROOT / "prompts" / "dictionary.yaml"),
+        _dictionary_for(org_slug),
     )
     est = build_estimate(
-        items, Pricer.from_yaml(ROOT / "prompts" / "unit_prices.yaml"), overhead_rate=overhead
+        items, Pricer.from_yaml(_kpath("unit_prices.yaml")), overhead_rate=overhead
     )
     return {
         "count": len(items),
@@ -344,3 +490,204 @@ async def legend_count(file: UploadFile | None = File(None), overhead: float = 0
         "subtotal": est.subtotal,
         "total": est.total,
     }
+
+
+# --------------------------------------------------------------------------
+# Web UI（Vercel）から使う口。Streamlit が in-process でやっていた
+# 「修正 → 学習の堀」「Excel 出力」を REST 化する。
+# --------------------------------------------------------------------------
+
+@app.post("/learn")
+async def learn(
+    payload: dict = Body(...),
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """人が直した行を学習の堀（learned_aliases）へ還元する。
+
+    payload = {"org_slug": "haruki", "project": "webui",
+               "corrections": [{"before": {...}, "after": {...}}, ...]}
+    before/after は name / spec / quantity / unit / category を持つ dict。
+    名称・カテゴリ・単位のいずれかが変わった行だけを別名として学習する。
+    """
+    _require_key(x_gopipe_key, "学習の記録(/learn)")
+
+    from gopipe_takeoff.feedback import record_correction
+    from gopipe_takeoff.learned import record_alias
+
+    org = str(payload.get("org_slug") or "default")
+    project = str(payload.get("project") or "webui")
+    rows = payload.get("corrections") or []
+    ts = datetime.date.today().isoformat()
+
+    captured = learned = 0
+    for row in rows:
+        before = row.get("before") or {}
+        after = row.get("after") or {}
+        # 鍵は「AIが実際に読んだ生の名前」。表示名(before.name)は分類で正規化済みの
+        # ことがあり、それを鍵にすると別部材まで巻き添えで化ける。
+        old_name = str(before.get("raw_name") or before.get("name") or "").strip()
+        new_name = str(after.get("name") or "").strip()
+        if not new_name:
+            continue
+        try:
+            record_correction(project=project, before=before, after=after, ts=ts)
+            captured += 1
+        except Exception:  # noqa: BLE001  副産物の記録失敗で学習を止めない
+            pass
+        changed = (
+            old_name != new_name
+            or str(before.get("category") or "") != str(after.get("category") or "")
+            or str(before.get("unit") or "") != str(after.get("unit") or "")
+        )
+        if changed and old_name:
+            try:
+                if record_alias(
+                    old_name, new_name,
+                    category=(after.get("category") or None),
+                    unit=(after.get("unit") or None),
+                    org=org,
+                ):
+                    learned += 1
+            except Exception:  # noqa: BLE001
+                pass
+    return {"captured": captured, "learned": learned, "org_slug": org}
+
+
+@app.post("/export/xlsx")
+async def export_xlsx(payload: dict = Body(...)):
+    """確定済みの拾い出し明細を Excel にして返す（ダウンロード用）。
+
+    サーバレスは /tmp だけが書込可なので、生成物は一時ファイル経由でバイト列にして返す。
+    """
+    from fastapi.responses import Response
+
+    from gopipe_takeoff.excel_writer import write_excel
+    from gopipe_takeoff.models import TakeoffItem
+
+    rows = payload.get("items") or []
+    items = [
+        TakeoffItem(
+            page=int(r.get("page") or 1),
+            name=str(r.get("name") or "").strip(),
+            spec=(r.get("spec") or None),
+            quantity=float(r.get("quantity") or 0),
+            unit=str(r.get("unit") or ""),
+            location=(r.get("location") or None),
+            category=(r.get("category") or None),
+            confidence=float(r.get("confidence") or 1.0),
+        )
+        for r in rows
+        if str(r.get("name") or "").strip()
+    ]
+    if not items:
+        raise HTTPException(status_code=400, detail="items が空です")
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = write_excel(items, OUT / "GOPIPE_拾い出し.xlsx")
+    data = Path(path).read_bytes()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="GOPIPE_takeoff.xlsx"'},
+    )
+
+
+@app.get("/learned")
+async def learned_list(
+    org_slug: str = "default",
+    locale: str = "ja",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """その会社が育てた学習済み別名（＝堀の中身）を Supabase から返す。
+
+    顧客データなのでキー必須。UI では「使うほど育っている」ことを見せる材料になる。
+    """
+    _require_key(x_gopipe_key, "学習済み別名の取得(/learned)")
+    from gopipe_takeoff import store
+
+    if not store.is_enabled():
+        raise HTTPException(status_code=503, detail="Supabase 未設定")
+    aliases = store.load_learned_aliases(org_slug, locale=locale)
+    return {
+        "org_slug": org_slug, "locale": locale, "count": len(aliases),
+        "aliases": [
+            {"raw": k, "canonical": v.get("canonical"),
+             "category": v.get("category"), "unit": v.get("unit")}
+            for k, v in aliases.items()
+        ],
+    }
+
+
+@app.post("/inspect")
+async def inspect(
+    storage_path: str = Form(""),
+    file: UploadFile | None = File(None),
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """投げる前に、その図面が読めるものかを返す。
+
+    スキャン画像の図面はテキスト層が無く、機器表の数量を確定情報として使えないため
+    精度が落ちる。実行して薄い結果が出てから「AIは使えない」と結論される前に、
+    入力側の問題であることを本人に伝えるための口。
+    """
+    if storage_path:
+        _require_key(x_gopipe_key, "Storage 上の図面の読み込み")
+    import fitz  # PyMuPDF
+
+    pdf = _save_upload(file, storage_path)
+    if not Path(pdf).exists():
+        raise HTTPException(status_code=400, detail="図面が見つかりません")
+
+    doc = fitz.open(str(pdf))
+    pages = doc.page_count
+    text_chars = 0
+    for i in range(min(pages, 20)):  # 先頭20ページで判定（大判一式でも即答するため）
+        text_chars += len(doc[i].get_text() or "")
+    doc.close()
+
+    # 前処理（自動コントラスト＋鮮鋭化）が実際に効く環境かを見る。
+    # 入っていないと手書き・スキャンの読み取りが素の画像のまま進むので、
+    # 「対策したつもりで効いていない」を作らないため明示する。
+    try:
+        import PIL  # noqa: F401
+        enhance_available = True
+    except Exception:  # noqa: BLE001
+        enhance_available = False
+
+    has_text = text_chars >= 200
+    if has_text:
+        kind, advice = "cad", "テキスト層あり。機器表の数量を確定情報として使えます。"
+    else:
+        kind, advice = "scan", (
+            "文字データがありません（スキャン図面・手書き図面・写真の可能性）。"
+            "この場合、機器表の数量で裏を取れないため、数量はAIの読み取りだけが頼りになります。"
+            "特に手書きの数字は読み違えが起きやすいので、表の数量は必ずご確認ください。"
+            "CAD出力のPDFが用意できるなら、そちらの方が確実です。"
+        )
+    return {
+        "pages": pages,
+        "kind": kind,
+        "has_text_layer": has_text,
+        "text_chars": text_chars,
+        "advice": advice,
+        "enhance_available": enhance_available,
+        # 1ページあたり十数秒〜。300秒の上限に対して危ないかを先に伝える
+        "may_time_out": pages > 12,
+    }
+
+
+@app.delete("/learned")
+async def revoke_learned(
+    org_slug: str,
+    raw: str,
+    locale: str = "ja",
+    x_gopipe_key: str | None = Header(default=None),
+):
+    """誤って覚えさせた言い換えを取り消す（論理削除・同じ内容を再度教えれば復活）。"""
+    _require_key(x_gopipe_key, "学習の取り消し(/learned)")
+    from gopipe_takeoff import store
+
+    if not store.is_enabled():
+        raise HTTPException(status_code=503, detail="Supabase 未設定")
+    store.revoke_learned_alias(org_slug, raw, locale=locale)
+    return {"ok": True, "raw": raw}

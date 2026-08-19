@@ -29,6 +29,13 @@ class TakeoffItem(BaseModel):
     category: str | None = None  # 内訳カテゴリ（分類後に埋まる）
     confidence: float = 1.0  # 0..1
     source: str | None = None  # 抽出由来: "text_table" | "reconciled"（vision 由来は None）
+    # AI が図面から実際に読み取った生の名称。分類で name を正規名に寄せても消さない。
+    # 学習（会社の辞書）の鍵はこちらを使う。表示名を鍵にすると、直すたびに
+    # 別の部材まで巻き添えで化ける。
+    raw_name: str | None = None
+    # 機器表と図面で数量が食い違ったときの「図面側の読み」。人が検算する材料として残す。
+    # 黙って上書きして 🟢 にしない（AIは提案・確定は人）。
+    qty_vision: float | None = None
 
 
 class Tile(BaseModel):

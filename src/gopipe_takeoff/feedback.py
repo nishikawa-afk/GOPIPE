@@ -23,10 +23,15 @@ def record_correction(*, project: str, before, after, source: str = "ui",
         "ts": ts, "project": project, "source": source, "note": note,
         "before": _as_dict(before), "after": _as_dict(after),
     }
+    # サーバレス(Vercel)はリポジトリ配下が読取専用。JSONLは fine-tune 用の副産物なので、
+    # 書けない環境でもリクエスト自体は落とさない（GOPIPE_FEEDBACK_LOG で /tmp へ逃がせる）。
     p = Path(log_path or DEFAULT_LOG)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        rec = {**rec, "persisted": False}
     return rec
 
 

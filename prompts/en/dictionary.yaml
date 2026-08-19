@@ -1,0 +1,138 @@
+# GOPIPE dictionary (en) — overseas HVAC/MEP takeoff. Phase-1 (VISION.md).
+# Same schema as prompts/dictionary.yaml. Categories: HVAC/Equipment/Piping/Duct/Valve/Insulation.
+# Units: ea / m / m2 (extend per market: ft / lf for imperial).
+entries:
+  # ---- Air terminals & HVAC accessories ----
+  - canonical: Supply Air Diffuser
+    category: HVAC
+    unit: ea
+    aliases: [supply diffuser, supply air outlet]
+  - canonical: Return Air Grille
+    category: HVAC
+    unit: ea
+    aliases: [return grille, return air inlet]
+  - canonical: Linear Slot Diffuser
+    category: HVAC
+    unit: ea
+    aliases: [slot diffuser]
+  - canonical: Exhaust Fan
+    category: HVAC
+    unit: ea
+    aliases: [exhaust fan unit]
+  - canonical: VAV Box
+    category: HVAC
+    unit: ea
+    aliases: [variable air volume box]
+  - canonical: Fire Damper
+    category: HVAC
+    unit: ea
+    aliases: [fire smoke damper]
+  - canonical: Volume Damper
+    category: HVAC
+    unit: ea
+    aliases: [volume control damper]
+  - canonical: Outdoor Air Louver
+    category: HVAC
+    unit: ea
+    aliases: [intake louver]
+  # ---- Equipment ----
+  - canonical: Fan Coil Unit
+    category: Equipment
+    unit: ea
+    aliases: [fan coil]
+  - canonical: Air Handling Unit
+    category: Equipment
+    unit: ea
+    aliases: [air handler]
+  - canonical: Rooftop Unit
+    category: Equipment
+    unit: ea
+    aliases: [rooftop package unit]
+  - canonical: Chiller
+    category: Equipment
+    unit: ea
+    aliases: [water chiller]
+  - canonical: Cooling Tower
+    category: Equipment
+    unit: ea
+    aliases: [cooling tower cell]
+  - canonical: Pump
+    category: Equipment
+    unit: ea
+    aliases: [circulation pump]
+  - canonical: Heat Exchanger
+    category: Equipment
+    unit: ea
+    aliases: [plate heat exchanger]
+  - canonical: Energy Recovery Ventilator
+    category: Equipment
+    unit: ea
+    aliases: [energy recovery unit]
+  # ---- Piping ----
+  - canonical: Chilled Water Pipe
+    category: Piping
+    unit: m
+    aliases: [chilled water piping]
+  - canonical: Hot Water Pipe
+    category: Piping
+    unit: m
+    aliases: [heating hot water pipe]
+  - canonical: Condenser Water Pipe
+    category: Piping
+    unit: m
+    aliases: [condenser water piping]
+  - canonical: Refrigerant Pipe
+    category: Piping
+    unit: m
+    aliases: [refrigerant piping]
+  - canonical: Condensate Drain
+    category: Piping
+    unit: m
+    aliases: [condensate drain pipe]
+  # ---- Ductwork ----
+  - canonical: Ductwork
+    category: Duct
+    unit: m2
+    aliases: [sheet metal duct]
+  - canonical: Spiral Duct
+    category: Duct
+    unit: m2
+    aliases: [spiral round duct]
+  - canonical: Flexible Duct
+    category: Duct
+    unit: m
+    aliases: [flex duct]
+  # ---- Valves & specialties ----
+  - canonical: Gate Valve
+    category: Valve
+    unit: ea
+    aliases: [gate valve assembly]
+  - canonical: Ball Valve
+    category: Valve
+    unit: ea
+    aliases: [ball valve assembly]
+  - canonical: Butterfly Valve
+    category: Valve
+    unit: ea
+    aliases: [butterfly valve assembly]
+  - canonical: Check Valve
+    category: Valve
+    unit: ea
+    aliases: [non return valve]
+  - canonical: Balancing Valve
+    category: Valve
+    unit: ea
+    aliases: [balancing valve assembly]
+  - canonical: Strainer
+    category: Valve
+    unit: ea
+    aliases: [y strainer]
+  # ---- Insulation ----
+  - canonical: Pipe Insulation
+    category: Insulation
+    unit: m2
+    aliases: [pipe lagging]
+  - canonical: Duct Insulation
+    category: Insulation
+    unit: m2
+    aliases: [duct lagging]

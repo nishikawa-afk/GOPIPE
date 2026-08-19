@@ -49,15 +49,81 @@ entries:
     aliases: [ドレン配管, 結露ドレン]
 
   # ========================= 弁類・継手 =========================
+  # ⚠️ ここは「別の部材」を1つに畳まないこと。逆止弁とバタフライ弁は品物も単価も違う。
+  #    alias に書いてよいのは同一部材の表記ゆれ（ゲートバルブ＝仕切弁）だけ。
+  #    別部材を alias にすると、AIが正しく読んだ名前を classify が握り潰し、
+  #    表に同じ名前が並んで「二重計上の疑い」まで誤爆する。
   - canonical: 仕切弁
     category: 弁類
     unit: 個
-    aliases: [ゲートバルブ, 玉形弁, ボール弁, バタフライ弁, 逆止弁, 止水栓]
+    aliases: [ゲートバルブ, ゲート弁, 仕切り弁]
 
+  - canonical: 玉形弁
+    category: 弁類
+    unit: 個
+    aliases: [グローブバルブ, グローブ弁, 玉型弁]
+
+  - canonical: ボール弁
+    category: 弁類
+    unit: 個
+    aliases: [ボールバルブ, ボール型弁]
+
+  - canonical: バタフライ弁
+    category: 弁類
+    unit: 個
+    aliases: [バタフライバルブ, バタ弁, 蝶形弁]
+
+  - canonical: 逆止弁
+    category: 弁類
+    unit: 個
+    aliases: [チャッキ弁, チェッキ弁, チェックバルブ, 逆止め弁]
+
+  - canonical: 止水栓
+    category: 弁類
+    unit: 個
+    aliases: [ストップ弁, 止水バルブ]
+
+  - canonical: 減圧弁
+    category: 弁類
+    unit: 個
+    aliases: [減圧バルブ, 定水位弁]
+
+  - canonical: エルボ
+    category: 継手
+    unit: 個
+    aliases: [エルボー, 曲がり継手]
+
+  - canonical: チーズ
+    category: 継手
+    unit: 個
+    aliases: [ティー継手, T継手]
+
+  - canonical: ソケット
+    category: 継手
+    unit: 個
+    aliases: [ソケット継手, カップリング]
+
+  - canonical: ニップル
+    category: 継手
+    unit: 個
+    aliases: [ニップル継手]
+
+  - canonical: レジューサ
+    category: 継手
+    unit: 個
+    aliases: [レデューサ, 径違いソケット, 異径ソケット]
+
+  - canonical: フランジ
+    category: 継手
+    unit: 個
+    aliases: [フランジ継手, フランジ接合]
+
+  # 種類まで読み取れなかったときの受け皿。個別の継手が先に一致するので、
+  # ここへ落ちるのは「継手」とだけ書かれていた行。
   - canonical: 継手
     category: 継手
     unit: 個
-    aliases: [エルボ, チーズ, ソケット, ニップル, レジューサ, 異径継手, フランジ]
+    aliases: [管継手, 異径継手]
 
   # ========================= 衛生器具 =========================
   - canonical: 大便器

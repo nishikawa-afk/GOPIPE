@@ -1,12 +1,14 @@
 {
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": { "includeFiles": ["src/**", "shared/**", "prompts/**", "api/**"] }
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "includeFiles": "{src,shared,prompts,api}/**"
     }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "api/index.py" }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index?__vpath=$1"
+    }
   ]
 }

@@ -49,6 +49,10 @@ class EstimateLine:
     def labor(self) -> int:
         return int(round(self.quote.labor(self.item.quantity))) if self.quote else 0
 
+    @property
+    def man_hours(self) -> float:
+        return self.quote.man_hours(self.item.quantity) if self.quote else 0.0
+
 
 @dataclass
 class Estimate:
@@ -57,6 +61,7 @@ class Estimate:
     lines: list[EstimateLine]
     overhead_rate: float = 0.10  # 諸経費率
     tax_rate: float = 0.10  # 消費税率
+    currency_symbol: str = "¥"  # 通貨記号（海外展開: $ 等）
 
     @property
     def subtotal(self) -> int:
@@ -65,6 +70,29 @@ class Estimate:
     @property
     def overhead(self) -> int:
         return int(round(self.subtotal * self.overhead_rate))
+
+    @property
+    def site_overhead(self) -> int:
+        """現場管理費（諸経費の内数・小計の5%目安、上限は諸経費率）。"""
+        return int(round(self.subtotal * min(self.overhead_rate, 0.05)))
+
+    @property
+    def general_overhead(self) -> int:
+        """一般管理費（諸経費の残り）。"""
+        return self.overhead - self.site_overhead
+
+    @property
+    def material_total(self) -> int:
+        return int(sum(ln.material for ln in self.lines))
+
+    @property
+    def labor_total(self) -> int:
+        return int(sum(ln.labor for ln in self.lines))
+
+    @property
+    def man_hours(self) -> float:
+        """総人工（歩掛のあるエントリのみ集計。0なら未計上）。"""
+        return round(sum(ln.man_hours for ln in self.lines), 1)
 
     @property
     def total_ex_tax(self) -> int:
@@ -89,11 +117,14 @@ def build_estimate(
     *,
     overhead_rate: float = 0.10,
     tax_rate: float = 0.10,
+    currency_symbol: str = "¥",
     vendor_id: str | None = None,
 ) -> Estimate:
     """拾い出し項目に単価を当てて見積を組み立てる。"""
     lines = [EstimateLine(item=it, quote=pricer.quote(it, vendor_id=vendor_id)) for it in items]
-    return Estimate(lines=lines, overhead_rate=overhead_rate, tax_rate=tax_rate)
+    return Estimate(
+        lines=lines, overhead_rate=overhead_rate, tax_rate=tax_rate, currency_symbol=currency_symbol,
+    )
 
 
 def _style_header(ws, ncol: int) -> None:

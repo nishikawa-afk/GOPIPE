@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from utils import get_logger
@@ -9,6 +9,7 @@ from .classifier import classify
 from .dictionary import TakeoffDictionary
 from .excel_writer import write_excel
 from .extractor import extract
+from .locale import resolve as resolve_knowledge
 from .marker import write_marker_pdf
 from .models import TakeoffItem
 from .pdf_loader import load_pdf
@@ -23,11 +24,16 @@ class TakeoffResult:
     items: list[TakeoffItem]
     excel_path: Path
     marker_pdf_path: Path | None
+    # 読み取れなかったページ・タイル。0件と「読めていない」を混同させないため、
+    # 空リストでない限り必ず画面まで運ぶ。
+    failures: list[str] = field(default_factory=list)
 
 
 class TakeoffPipeline:
     def __init__(self, *, dictionary_path: str | Path | None = None) -> None:
-        self.dictionary = TakeoffDictionary.from_yaml(dictionary_path or DICTIONARY_PATH)
+        self.dictionary = TakeoffDictionary.from_yaml(
+            dictionary_path or resolve_knowledge("dictionary.yaml")
+        )
 
     def run(
         self,
@@ -58,8 +64,23 @@ class TakeoffPipeline:
         logger.info("pages=%d", len(drawing.pages))
 
         logger.info("extracting items via LLM (use_text_table=%s) ...", use_text_table)
-        raw_items = extract(drawing, two_pass=two_pass, use_text_table=use_text_table)
-        logger.info("extracted=%d items", len(raw_items))
+        failures: list[str] = []
+        raw_items = extract(
+            drawing, two_pass=two_pass, use_text_table=use_text_table, failures=failures
+        )
+        logger.info("extracted=%d items (failures=%d)", len(raw_items), len(failures))
+
+        # その会社が育てた別名を辞書に混ぜてから分類する。これを忘れると、
+        # 現場がいくら直しても次回の結果が変わらない（＝堀が効かない）。
+        from .learned import current_org, load_aliases
+
+        try:
+            learned = load_aliases()
+            if learned:
+                n = self.dictionary.add_learned(learned)
+                logger.info("learned aliases merged: %d (org=%s)", n, current_org())
+        except Exception as e:  # noqa: BLE001  堀が引けなくても拾い出し自体は続ける
+            logger.warning("learned aliases unavailable: %s", e)
 
         logger.info("classifying ...")
         items = classify(raw_items, self.dictionary)
@@ -78,7 +99,9 @@ class TakeoffPipeline:
                 logger.warning("marker pdf failed: %s", e)
                 marker_path = None
 
-        return TakeoffResult(items=items, excel_path=excel_path, marker_pdf_path=marker_path)
+        return TakeoffResult(
+            items=items, excel_path=excel_path, marker_pdf_path=marker_path, failures=failures
+        )
 
 
 def run_takeoff(

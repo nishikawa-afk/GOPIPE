@@ -25,3 +25,5 @@ samples/*.PDF
 # OS
 .DS_Store
 .vercel
+.playwright-mcp/
+rev-new.jpeg
